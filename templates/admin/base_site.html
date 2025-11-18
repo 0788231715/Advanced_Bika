@@ -1,0 +1,506 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if site_info %}{{ site_info.name }} Administration{% else %}Bika Administration{% endif %}{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% endblock %}
+
+{% block branding %}
+    <h1 id="site-name">
+        <a href="{% url 'admin:index' %}" class="admin-brand">
+            {% if site_info and site_info.logo %}
+                <img src="{{ site_info.logo.url }}" alt="{{ site_info.name }}" class="admin-logo">
+            {% else %}
+                <i class="fas fa-rocket admin-brand-icon"></i>
+            {% endif %}
+            <span class="admin-brand-text">
+                {% if site_info %}
+                    {{ site_info.name }}
+                {% else %}
+                    Bika
+                {% endif %}
+                <small class="admin-brand-subtitle">Administration</small>
+            </span>
+        </a>
+    </h1>
+{% endblock %}
+
+{% block usertools %}
+    {% if has_permission %}
+        <div id="user-tools">
+            {% block welcome-msg %}
+                <span class="welcome-msg">
+                    <i class="fas fa-user-circle me-1"></i>
+                    Welcome, <strong>{% firstof user.get_short_name user.get_username %}</strong>.
+                </span>
+            {% endblock %}
+            {% block userlinks %}
+                {% if site_url %}
+                    <a href="{{ site_url }}" class="admin-external-link" target="_blank">
+                        <i class="fas fa-external-link-alt me-1"></i>View Site
+                    </a> /
+                {% endif %}
+                {% if user.is_active and user.is_staff %}
+                    {% url 'django-admindocs-docroot' as docsroot %}
+                    {% if docsroot %}
+                        <a href="{{ docsroot }}" class="admin-docs-link">
+                            <i class="fas fa-book me-1"></i>Documentation
+                        </a> /
+                    {% endif %}
+                {% endif %}
+                {% if user.has_usable_password %}
+                    <a href="{% url 'admin:password_change' %}" class="admin-password-link">
+                        <i class="fas fa-key me-1"></i>Change Password
+                    </a> /
+                {% endif %}
+                <a href="{% url 'admin:logout' %}" class="admin-logout-link">
+                    <i class="fas fa-sign-out-alt me-1"></i>Log out
+                </a>
+            {% endblock %}
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block nav-global %}
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <a href="{% url 'bika:home' %}" class="btn btn-sm btn-outline-light me-2" target="_blank">
+            <i class="fas fa-home me-1"></i>Frontend
+        </a>
+        <a href="{% url 'bika:admin_dashboard' %}" class="btn btn-sm btn-primary me-2">
+            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+        </a>
+        <a href="/admin/bika/contactmessage/?status__exact=new" class="btn btn-sm btn-warning me-2">
+            <i class="fas fa-envelope me-1"></i>New Messages
+        </a>
+    </div>
+{% endblock %}
+
+{% block footer %}
+    {{ block.super }}
+    <div class="admin-footer">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <p class="mb-0">
+                        &copy; {% now "Y" %} 
+                        {% if site_info %}
+                            {{ site_info.name }}
+                        {% else %}
+                            Bika
+                        {% endif %}. 
+                        All rights reserved.
+                    </p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="admin-footer-links">
+                        <span class="text-muted me-3">
+                            <i class="fas fa-shield-alt me-1"></i>Secure Admin
+                        </span>
+                        <span class="text-muted">
+                            <i class="fas fa-clock me-1"></i>{% now "F j, Y, g:i a" %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin JavaScript -->
+    <script src="{% static 'js/admin.js' %}"></script>
+    
+    <!-- Custom Admin Scripts -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Admin specific enhancements
+        console.log('🎯 Bika Admin Panel Loaded');
+        
+        // Add loading states to admin actions
+        const adminForms = document.querySelectorAll('form');
+        adminForms.forEach(form => {
+            form.addEventListener('submit', function() {
+                const submitBtn = this.querySelector('input[type="submit"], button[type="submit"]');
+                if (submitBtn) {
+                    const originalValue = submitBtn.value;
+                    submitBtn.value = 'Processing...';
+                    submitBtn.disabled = true;
+                    
+                    // Re-enable after 10 seconds (fallback)
+                    setTimeout(() => {
+                        submitBtn.value = originalValue;
+                        submitBtn.disabled = false;
+                    }, 10000);
+                }
+            });
+        });
+
+        // Enhance admin tables
+        const tables = document.querySelectorAll('table');
+        tables.forEach(table => {
+            table.classList.add('table-hover', 'table-striped');
+        });
+
+        // Add confirmation for dangerous actions
+        const deleteLinks = document.querySelectorAll('a[class*="deletelink"]');
+        deleteLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                if (!confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
+                    e.preventDefault();
+                }
+            });
+        });
+    });
+    </script>
+{% endblock %}
+
+{% block extrastyle %}
+    <style>
+    :root {
+        --bika-primary: #007bff;
+        --bika-primary-dark: #0056b3;
+        --bika-secondary: #6c757d;
+        --bika-success: #28a745;
+        --bika-danger: #dc3545;
+        --bika-warning: #ffc107;
+        --bika-info: #17a2b8;
+        --bika-light: #f8f9fa;
+        --bika-dark: #343a40;
+    }
+
+    /* Base Admin Overrides */
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #f8f9fa;
+    }
+
+    #header {
+        background: linear-gradient(135deg, var(--bika-primary) 0%, var(--bika-primary-dark) 100%);
+        color: white;
+        border-bottom: 3px solid var(--bika-primary-dark);
+    }
+
+    /* Branding Styles */
+    .admin-brand {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+        color: white !important;
+        font-weight: 600;
+        font-size: 1.3rem;
+    }
+
+    .admin-logo {
+        height: 35px;
+        margin-right: 12px;
+        border-radius: 4px;
+    }
+
+    .admin-brand-icon {
+        font-size: 1.8rem;
+        margin-right: 12px;
+        opacity: 0.9;
+    }
+
+    .admin-brand-text {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+    }
+
+    .admin-brand-subtitle {
+        font-size: 0.75rem;
+        opacity: 0.8;
+        font-weight: 400;
+        margin-top: 2px;
+    }
+
+    /* User Tools Enhancement */
+    #user-tools {
+        font-size: 0.9rem;
+        padding: 8px 0;
+    }
+
+    .welcome-msg {
+        color: rgba(255, 255, 255, 0.9);
+        margin-right: 15px;
+    }
+
+    .admin-external-link,
+    .admin-docs-link,
+    .admin-password-link,
+    .admin-logout-link {
+        color: rgba(255, 255, 255, 0.8) !important;
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+
+    .admin-external-link:hover,
+    .admin-docs-link:hover,
+    .admin-password-link:hover,
+    .admin-logout-link:hover {
+        color: white !important;
+    }
+
+    /* Quick Actions */
+    .quick-actions {
+        position: absolute;
+        right: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    /* Breadcrumb Enhancement */
+    .breadcrumbs {
+        background: white;
+        border-radius: 8px;
+        padding: 12px 20px;
+        margin: 20px 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        border-left: 4px solid var(--bika-primary);
+    }
+
+    /* Module Styles */
+    .module {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        margin-bottom: 25px;
+        overflow: hidden;
+    }
+
+    .module h2, .module caption {
+        background: linear-gradient(135deg, var(--bika-primary) 0%, var(--bika-primary-dark) 100%);
+        color: white;
+        padding: 15px 20px;
+        font-weight: 600;
+        border: none;
+    }
+
+    /* Table Enhancements */
+    table {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+    }
+
+    thead th {
+        background: var(--bika-light);
+        border-bottom: 2px solid var(--bika-primary);
+        font-weight: 600;
+        color: var(--bika-dark);
+    }
+
+    /* Form Enhancements */
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="url"],
+    input[type="number"],
+    textarea,
+    select {
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        padding: 10px 12px;
+        transition: all 0.3s ease;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="email"]:focus,
+    input[type="url"]:focus,
+    input[type="number"]:focus,
+    textarea:focus,
+    select:focus {
+        border-color: var(--bika-primary);
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+
+    .submit-row {
+        background: white;
+        border-top: 1px solid #e9ecef;
+        padding: 20px;
+        margin: 0;
+        border-radius: 0 0 12px 12px;
+    }
+
+    .submit-row input {
+        border-radius: 6px;
+        padding: 10px 25px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+
+    .submit-row input.default {
+        background: linear-gradient(135deg, var(--bika-primary) 0%, var(--bika-primary-dark) 100%);
+        border: none;
+    }
+
+    .submit-row input.default:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+    }
+
+    /* Dashboard Styles */
+    .dashboard .module table th {
+        width: 100%;
+    }
+
+    .dashboard .module table td {
+        white-space: nowrap;
+    }
+
+    .dashboard .module table td a {
+        display: flex;
+        align-items: center;
+        padding: 8px 0;
+        text-decoration: none;
+        color: var(--bika-dark);
+        transition: color 0.3s ease;
+    }
+
+    .dashboard .module table td a:hover {
+        color: var(--bika-primary);
+    }
+
+    .dashboard .module table td a::before {
+        content: '▸';
+        margin-right: 8px;
+        color: var(--bika-primary);
+    }
+
+    /* Action Buttons */
+    .btn {
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 0.875rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--bika-primary) 0%, var(--bika-primary-dark) 100%);
+        border: none;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+    }
+
+    /* Footer Styles */
+    .admin-footer {
+        background: white;
+        border-top: 1px solid #e9ecef;
+        padding: 20px 0;
+        margin-top: 40px;
+        color: var(--bika-secondary);
+    }
+
+    .admin-footer-links {
+        font-size: 0.875rem;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .quick-actions {
+            position: static;
+            transform: none;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .quick-actions .btn {
+            margin-bottom: 5px;
+        }
+        
+        .admin-brand-text {
+            font-size: 1.1rem;
+        }
+        
+        #user-tools {
+            text-align: center;
+            padding: 10px 0;
+        }
+    }
+
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+        body {
+            background: #1a1d23;
+            color: #e9ecef;
+        }
+        
+        .module, table, .submit-row {
+            background: #2d333b;
+            color: #e9ecef;
+        }
+        
+        input, textarea, select {
+            background: #2d333b;
+            border-color: #495057;
+            color: #e9ecef;
+        }
+    }
+
+    /* Animation for module loading */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .module {
+        animation: fadeInUp 0.5s ease;
+    }
+
+    /* Status indicators */
+    .status-active {
+        color: var(--bika-success);
+        font-weight: 600;
+    }
+
+    .status-inactive {
+        color: var(--bika-secondary);
+    }
+
+    .status-pending {
+        color: var(--bika-warning);
+    }
+
+    /* Badge styles */
+    .badge {
+        border-radius: 12px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-new {
+        background: var(--bika-success);
+        color: white;
+    }
+
+    .badge-updated {
+        background: var(--bika-info);
+        color: white;
+    }
+    </style>
+{% endblock %}

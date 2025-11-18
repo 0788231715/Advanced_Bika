@@ -1,0 +1,751 @@
+{% load static %}
+
+<!-- Header -->
+<header>
+    <!-- Top Bar -->
+    <div class="top-bar bg-dark text-light py-2">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <div class="top-bar-info">
+                        {% if site_info and site_info.email %}
+                        <span class="me-3">
+                            <i class="fas fa-envelope me-1"></i>
+                            <a href="mailto:{{ site_info.email }}" class="text-light text-decoration-none small">{{ site_info.email }}</a>
+                        </span>
+                        {% endif %}
+                        {% if site_info and site_info.phone %}
+                        <span class="me-3">
+                            <i class="fas fa-phone me-1"></i>
+                            <a href="tel:{{ site_info.phone }}" class="text-light text-decoration-none small">{{ site_info.phone }}</a>
+                        </span>
+                        {% endif %}
+                        <span>
+                            <i class="fas fa-clock me-1"></i>
+                            <span class="small">Mon - Fri: 9:00 - 18:00</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <div class="top-bar-social">
+                        {% if site_info and site_info.facebook_url %}
+                        <a href="{{ site_info.facebook_url }}" class="text-light me-2 social-icon" target="_blank" title="Facebook">
+                            <i class="fab fa-facebook-f"></i>
+                        </a>
+                        {% endif %}
+                        {% if site_info and site_info.twitter_url %}
+                        <a href="{{ site_info.twitter_url }}" class="text-light me-2 social-icon" target="_blank" title="Twitter">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        {% endif %}
+                        {% if site_info and site_info.instagram_url %}
+                        <a href="{{ site_info.instagram_url }}" class="text-light me-2 social-icon" target="_blank" title="Instagram">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                        {% endif %}
+                        {% if site_info and site_info.linkedin_url %}
+                        <a href="{{ site_info.linkedin_url }}" class="text-light social-icon" target="_blank" title="LinkedIn">
+                            <i class="fab fa-linkedin-in"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
+        <div class="container">
+            <!-- Logo -->
+            <a class="navbar-brand" href="{% url 'bika:home' %}">
+                {% if site_info and site_info.logo %}
+                <img src="{{ site_info.logo.url }}" alt="{{ site_info.name }}" height="50" class="logo-img">
+                {% else %}
+                <div class="brand-content">
+                    <i class="fas fa-rocket text-primary me-2 brand-icon"></i>
+                    <span class="brand-text">
+                        <strong class="brand-name">{% if site_info %}{{ site_info.name }}{% else %}Bika{% endif %}</strong>
+                        {% if site_info and site_info.tagline %}
+                        <small class="brand-tagline d-none d-md-block">{{ site_info.tagline }}</small>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
+            </a>
+
+            <!-- Mobile Toggle Button -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain" 
+                    aria-controls="navbarMain" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <!-- Navigation Menu -->
+            <div class="collapse navbar-collapse" id="navbarMain">
+                <ul class="navbar-nav mx-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}" 
+                           href="{% url 'bika:home' %}">
+                            <i class="fas fa-home d-lg-none me-2"></i>Home
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'about' %}active{% endif %}" 
+                           href="{% url 'bika:about' %}">
+                            <i class="fas fa-info-circle d-lg-none me-2"></i>About
+                        </a>
+                    </li>
+
+                    <!-- Services Dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if 'services' in request.resolver_match.url_name %}active{% endif %}" 
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-cogs d-lg-none me-2"></i>Services
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-lg">
+                            <li>
+                                <a class="dropdown-item dropdown-header" href="{% url 'bika:services' %}">
+                                    <i class="fas fa-list me-2"></i>
+                                    <strong>All Services</strong>
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            {% for service in featured_services|slice:":6" %}
+                            <li>
+                                <a class="dropdown-item service-item" href="{{ service.get_absolute_url }}">
+                                    <div class="service-dropdown-content">
+                                        <i class="{{ service.icon }} me-3 text-primary"></i>
+                                        <div>
+                                            <div class="service-name">{{ service.name }}</div>
+                                            <small class="text-muted">{{ service.description|truncatewords:8 }}</small>
+                                        </div>
+                                    </div>
+                                </a>
+                            </li>
+                            {% empty %}
+                            <li>
+                                <a class="dropdown-item" href="{% url 'bika:services' %}">
+                                    <i class="fas fa-briefcase me-2"></i>Business Solutions
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'bika:services' %}">
+                                    <i class="fas fa-chart-line me-2"></i>Consulting
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'bika:services' %}">
+                                    <i class="fas fa-headset me-2"></i>Support
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'faq' %}active{% endif %}" 
+                           href="{% url 'bika:faq' %}">
+                            <i class="fas fa-question-circle d-lg-none me-2"></i>FAQ
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'contact' %}active{% endif %}" 
+                           href="{% url 'bika:contact' %}">
+                            <i class="fas fa-envelope d-lg-none me-2"></i>Contact
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Header Actions -->
+                <div class="header-actions">
+                    <!-- Search Button -->
+                    <button class="btn btn-outline-secondary btn-sm me-2 search-trigger" type="button" title="Search">
+                        <i class="fas fa-search"></i>
+                    </button>
+
+                    <!-- User Menu -->
+                    {% if user.is_authenticated %}
+                    <div class="dropdown user-dropdown">
+                        <a class="btn btn-outline-primary dropdown-toggle user-menu" href="#" role="button" 
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle me-1"></i>
+                            <span class="d-none d-md-inline">{{ user.username }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'admin:index' %}">
+                                    <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'admin:password_change' %}">
+                                    <i class="fas fa-key me-2"></i>Change Password
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item text-danger" href="{% url 'admin:logout' %}">
+                                    <i class="fas fa-sign-out-alt me-2"></i>Logout
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    {% else %}
+                    <div class="auth-buttons">
+                        <a href="{% url 'admin:login' %}" class="btn btn-primary btn-sm login-btn">
+                            <i class="fas fa-sign-in-alt me-1"></i>
+                            <span class="d-none d-md-inline">Login</span>
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Search Overlay -->
+    <div class="search-overlay" id="searchOverlay">
+        <div class="search-container">
+            <div class="container">
+                <div class="search-header">
+                    <h5 class="text-white mb-4">Search Bika</h5>
+                    <button class="btn-close btn-close-white search-close" type="button" aria-label="Close"></button>
+                </div>
+                <form class="search-form" action="{% url 'bika:services' %}" method="get">
+                    <div class="input-group input-group-lg">
+                        <input type="text" class="form-control search-input" 
+                               placeholder="What service are you looking for?" 
+                               name="q" aria-label="Search" autocomplete="off">
+                        <button class="btn btn-primary search-submit" type="submit">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                </form>
+                <div class="search-suggestions mt-4">
+                    <h6 class="text-light mb-3">Popular Searches:</h6>
+                    <div class="suggestion-tags">
+                        <a href="{% url 'bika:services' %}?q=business" class="badge bg-light text-dark me-2 mb-2">Business Solutions</a>
+                        <a href="{% url 'bika:services' %}?q=consulting" class="badge bg-light text-dark me-2 mb-2">Consulting</a>
+                        <a href="{% url 'bika:services' %}?q=support" class="badge bg-light text-dark me-2 mb-2">Support</a>
+                        <a href="{% url 'bika:services' %}?q=development" class="badge bg-light text-dark me-2 mb-2">Development</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<style>
+/* Top Bar Styles */
+.top-bar {
+    font-size: 0.875rem;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%) !important;
+}
+
+.top-bar a {
+    transition: opacity 0.3s ease;
+}
+
+.top-bar a:hover {
+    opacity: 0.8;
+}
+
+.social-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.social-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Brand Styles */
+.brand-content {
+    display: flex;
+    align-items: center;
+}
+
+.brand-icon {
+    font-size: 2rem;
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.brand-name {
+    font-size: 1.5rem;
+    color: #2c3e50;
+    line-height: 1;
+}
+
+.brand-tagline {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-weight: normal;
+    margin-top: 2px;
+}
+
+.logo-img {
+    transition: transform 0.3s ease;
+}
+
+.logo-img:hover {
+    transform: scale(1.05);
+}
+
+/* Navigation Styles */
+.navbar-nav .nav-link {
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    margin: 0 0.25rem;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    color: #495057;
+    position: relative;
+}
+
+.navbar-nav .nav-link:hover {
+    color: #007bff;
+    background: rgba(0, 123, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.navbar-nav .nav-link.active {
+    color: #007bff !important;
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.navbar-nav .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 6px;
+    background: #007bff;
+    border-radius: 50%;
+}
+
+/* Dropdown Styles */
+.dropdown-menu-lg {
+    min-width: 400px;
+    border: none;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    padding: 0;
+}
+
+.dropdown-header {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 12px 12px 0 0;
+}
+
+.dropdown-header:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+    color: white;
+}
+
+.service-item {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #f8f9fa;
+}
+
+.service-item:last-child {
+    border-bottom: none;
+}
+
+.service-dropdown-content {
+    display: flex;
+    align-items: flex-start;
+}
+
+.service-name {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+}
+
+.service-item:hover .service-name {
+    color: #007bff;
+}
+
+/* Header Actions */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.search-trigger, .user-menu, .login-btn {
+    border-radius: 25px;
+    padding: 0.5rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.search-trigger:hover, .user-menu:hover, .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.user-dropdown .dropdown-menu {
+    border-radius: 10px;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+    border: none;
+}
+
+/* Search Overlay */
+.search-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+}
+
+.search-overlay.show {
+    display: flex;
+    animation: fadeIn 0.3s ease;
+}
+
+.search-container {
+    width: 100%;
+    max-width: 700px;
+    padding: 2rem;
+}
+
+.search-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.search-input {
+    border: none;
+    border-radius: 10px 0 0 10px;
+    padding: 1.25rem 1.5rem;
+    font-size: 1.1rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 2px solid transparent;
+}
+
+.search-input:focus {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #007bff;
+    box-shadow: none;
+    color: white;
+}
+
+.search-input::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.search-submit {
+    border-radius: 0 10px 10px 0;
+    padding: 1.25rem 2rem;
+    font-weight: 600;
+}
+
+.suggestion-tags .badge {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+}
+
+.suggestion-tags .badge:hover {
+    background: #007bff !important;
+    color: white !important;
+    transform: translateY(-2px);
+    border-color: #007bff;
+}
+
+/* Sticky Header Effect */
+.navbar.sticky-top.scrolled {
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile Responsive */
+@media (max-width: 991.98px) {
+    .navbar-collapse {
+        background: white;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+        margin-top: 1rem;
+    }
+    
+    .navbar-nav .nav-link {
+        margin: 0.25rem 0;
+        padding: 0.75rem 1rem;
+    }
+    
+    .navbar-nav .nav-link.active::after {
+        display: none;
+    }
+    
+    .dropdown-menu-lg {
+        min-width: auto;
+        margin: 0.5rem 0;
+    }
+    
+    .header-actions {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e9ecef;
+        justify-content: center;
+        width: 100%;
+    }
+    
+    .top-bar-info span {
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+    
+    .brand-tagline {
+        display: none !important;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .top-bar {
+        font-size: 0.8rem;
+        text-align: center;
+    }
+    
+    .search-container {
+        padding: 1rem;
+    }
+    
+    .search-input {
+        padding: 1rem;
+    }
+    
+    .search-submit {
+        padding: 1rem 1.5rem;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideInDown {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* Loading States */
+.nav-link.loading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.nav-link.loading::before {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Search Functionality
+    const searchTrigger = document.querySelector('.search-trigger');
+    const searchOverlay = document.getElementById('searchOverlay');
+    const searchClose = document.querySelector('.search-close');
+    const searchInput = document.querySelector('.search-input');
+
+    if (searchTrigger && searchOverlay) {
+        searchTrigger.addEventListener('click', function() {
+            searchOverlay.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            searchInput.focus();
+        });
+
+        searchClose.addEventListener('click', function() {
+            searchOverlay.classList.remove('show');
+            document.body.style.overflow = '';
+        });
+
+        // Close on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && searchOverlay.classList.contains('show')) {
+                searchOverlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
+        // Close on overlay click
+        searchOverlay.addEventListener('click', function(e) {
+            if (e.target === searchOverlay) {
+                searchOverlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+    }
+
+    // Sticky Header Effect
+    const navbar = document.querySelector('.navbar');
+    window.addEventListener('scroll', function() {
+        if (window.scrollY > 50) {
+            navbar.classList.add('scrolled');
+        } else {
+            navbar.classList.remove('scrolled');
+        }
+    });
+
+    // Mobile Menu Close on Click
+    const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+    const navbarCollapse = document.querySelector('.navbar-collapse');
+    
+    navLinks.forEach(link => {
+        link.addEventListener('click', function() {
+            if (window.innerWidth < 992) {
+                const bsCollapse = new bootstrap.Collapse(navbarCollapse);
+                bsCollapse.hide();
+            }
+        });
+    });
+
+    // Active Navigation Highlighting
+    function setActiveNav() {
+        const currentPath = window.location.pathname;
+        navLinks.forEach(link => {
+            const linkPath = link.getAttribute('href');
+            if (linkPath === currentPath || 
+                (linkPath !== '/' && currentPath.startsWith(linkPath)) ||
+                (linkPath.includes('services') && currentPath.includes('services'))) {
+                link.classList.add('active');
+            } else {
+                link.classList.remove('active');
+            }
+        });
+    }
+    
+    setActiveNav();
+
+    // Smooth Scroll for Anchor Links
+    document.querySelectorAll('.nav-link[href^="#"]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (href.startsWith('#')) {
+                e.preventDefault();
+                const target = document.querySelector(href);
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    
+                    // Close mobile menu
+                    if (window.innerWidth < 992) {
+                        const bsCollapse = new bootstrap.Collapse(navbarCollapse);
+                        bsCollapse.hide();
+                    }
+                }
+            }
+        });
+    });
+
+    // Dropdown Hover for Desktop
+    if (window.innerWidth > 992) {
+        const dropdowns = document.querySelectorAll('.dropdown');
+        
+        dropdowns.forEach(dropdown => {
+            dropdown.addEventListener('mouseenter', function() {
+                const dropdownToggle = this.querySelector('.dropdown-toggle');
+                if (!dropdownToggle.classList.contains('show')) {
+                    bootstrap.Dropdown.getOrCreateInstance(dropdownToggle).show();
+                }
+            });
+            
+            dropdown.addEventListener('mouseleave', function() {
+                const dropdownToggle = this.querySelector('.dropdown-toggle');
+                if (dropdownToggle.classList.contains('show')) {
+                    bootstrap.Dropdown.getOrCreateInstance(dropdownToggle).hide();
+                }
+            });
+        });
+    }
+
+    // Loading State for Navigation Links
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            if (!this.getAttribute('href').startsWith('#') && !this.classList.contains('dropdown-toggle')) {
+                this.classList.add('loading');
+                
+                // Remove loading state after navigation (fallback)
+                setTimeout(() => {
+                    this.classList.remove('loading');
+                }, 3000);
+            }
+        });
+    });
+
+    // Search Form Enhancement
+    const searchForm = document.querySelector('.search-form');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            const searchValue = searchInput.value.trim();
+            if (searchValue === '') {
+                e.preventDefault();
+                searchInput.focus();
+                return false;
+            }
+        });
+    }
+
+    // Initialize tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+    const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>

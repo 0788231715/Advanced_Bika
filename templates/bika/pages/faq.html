@@ -1,0 +1,373 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}FAQ - Bika Inventory Solutions{% endblock %}
+
+{% block extra_css %}
+<style>
+    .faq-hero {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    }
+    .faq-category-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border: none;
+    }
+    .faq-category-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    .accordion-button:not(.collapsed) {
+        background-color: #e7f1ff;
+        color: #0d6efd;
+        font-weight: 600;
+    }
+    .accordion-button:focus {
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        border-color: #0d6efd;
+    }
+    .search-box {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    .contact-promo {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- FAQ Hero Section -->
+<section class="faq-hero text-white py-5">
+    <div class="container">
+        <div class="row text-center">
+            <div class="col-lg-8 mx-auto">
+                <h1 class="display-4 fw-bold mb-4">Frequently Asked Questions</h1>
+                <p class="lead mb-4">Find answers to common questions about Bika's inventory management solutions and services</p>
+                
+                <!-- Search Box -->
+                <div class="search-box">
+                    <div class="input-group input-group-lg">
+                        <input type="text" class="form-control" placeholder="Search for answers..." id="faqSearch">
+                        <button class="btn btn-light" type="button" id="searchButton">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ Categories -->
+<section class="faq-categories py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h2 class="section-title">Browse by Category</h2>
+                <p class="section-subtitle">Quickly find answers organized by topic</p>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card faq-category-card h-100 text-center p-4">
+                    <div class="category-icon mb-3">
+                        <i class="fas fa-cube fa-3x text-primary"></i>
+                    </div>
+                    <h4>Inventory Management</h4>
+                    <p class="text-muted">Questions about stock tracking, reordering, and warehouse management</p>
+                    <a href="#inventory-faq" class="btn btn-outline-primary">View Questions</a>
+                </div>
+            </div>
+            
+            <div class="col-md-4 mb-4">
+                <div class="card faq-category-card h-100 text-center p-4">
+                    <div class="category-icon mb-3">
+                        <i class="fas fa-cogs fa-3x text-primary"></i>
+                    </div>
+                    <h4>Implementation & Setup</h4>
+                    <p class="text-muted">Getting started, migration, and system configuration</p>
+                    <a href="#implementation-faq" class="btn btn-outline-primary">View Questions</a>
+                </div>
+            </div>
+            
+            <div class="col-md-4 mb-4">
+                <div class="card faq-category-card h-100 text-center p-4">
+                    <div class="category-icon mb-3">
+                        <i class="fas fa-credit-card fa-3x text-primary"></i>
+                    </div>
+                    <h4>Pricing & Plans</h4>
+                    <p class="text-muted">Billing, subscription plans, and payment options</p>
+                    <a href="#pricing-faq" class="btn btn-outline-primary">View Questions</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card faq-category-card h-100 text-center p-4">
+                    <div class="category-icon mb-3">
+                        <i class="fas fa-plug fa-3x text-primary"></i>
+                    </div>
+                    <h4>Integrations</h4>
+                    <p class="text-muted">Connecting with other software and platforms</p>
+                    <a href="#integrations-faq" class="btn btn-outline-primary">View Questions</a>
+                </div>
+            </div>
+            
+            <div class="col-md-4 mb-4">
+                <div class="card faq-category-card h-100 text-center p-4">
+                    <div class="category-icon mb-3">
+                        <i class="fas fa-shield-alt fa-3x text-primary"></i>
+                    </div>
+                    <h4>Security & Data</h4>
+                    <p class="text-muted">Data protection, privacy, and security measures</p>
+                    <a href="#security-faq" class="btn btn-outline-primary">View Questions</a>
+                </div>
+            </div>
+            
+            <div class="col-md-4 mb-4">
+                <div class="card faq-category-card h-100 text-center p-4">
+                    <div class="category-icon mb-3">
+                        <i class="fas fa-headset fa-3x text-primary"></i>
+                    </div>
+                    <h4>Support & Training</h4>
+                    <p class="text-muted">Customer support, training resources, and documentation</p>
+                    <a href="#support-faq" class="btn btn-outline-primary">View Questions</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ Accordions -->
+<section class="faq-accordions py-5 bg-light">
+    <div class="container">
+        <!-- Inventory Management FAQ -->
+        <div class="row mb-5" id="inventory-faq">
+            <div class="col-12">
+                <div class="d-flex align-items-center mb-4">
+                    <i class="fas fa-cube fa-2x text-primary me-3"></i>
+                    <h3 class="mb-0">Inventory Management</h3>
+                </div>
+                
+                <div class="accordion" id="inventoryAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#inventoryOne">
+                                How does real-time inventory tracking work?
+                            </button>
+                        </h2>
+                        <div id="inventoryOne" class="accordion-collapse collapse show" data-bs-parent="#inventoryAccordion">
+                            <div class="accordion-body">
+                                Our real-time inventory tracking uses barcode scanning, RFID technology, and API integrations to provide instant updates on stock levels. Every movement - from receiving to sales - is tracked automatically, giving you up-to-the-minute accuracy across all locations.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#inventoryTwo">
+                                Can Bika handle multiple warehouse locations?
+                            </button>
+                        </h2>
+                        <div id="inventoryTwo" class="accordion-collapse collapse" data-bs-parent="#inventoryAccordion">
+                            <div class="accordion-body">
+                                Yes! Bika supports unlimited warehouse locations with centralized management. You can track inventory across multiple sites, transfer stock between locations, and set location-specific reorder points and pricing.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#inventoryThree">
+                                How accurate is the demand forecasting?
+                            </button>
+                        </h2>
+                        <div id="inventoryThree" class="accordion-collapse collapse" data-bs-parent="#inventoryAccordion">
+                            <div class="accordion-body">
+                                Our AI-powered demand forecasting achieves 85-95% accuracy by analyzing historical sales data, seasonal trends, market conditions, and promotional activities. The system continuously learns and improves its predictions over time.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Implementation & Setup FAQ -->
+        <div class="row mb-5" id="implementation-faq">
+            <div class="col-12">
+                <div class="d-flex align-items-center mb-4">
+                    <i class="fas fa-cogs fa-2x text-primary me-3"></i>
+                    <h3 class="mb-0">Implementation & Setup</h3>
+                </div>
+                
+                <div class="accordion" id="implementationAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#implementationOne">
+                                How long does implementation typically take?
+                            </button>
+                        </h2>
+                        <div id="implementationOne" class="accordion-collapse collapse show" data-bs-parent="#implementationAccordion">
+                            <div class="accordion-body">
+                                Implementation time varies based on business size and complexity. Most businesses are up and running within 2-4 weeks. We provide a dedicated implementation specialist to ensure a smooth transition.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#implementationTwo">
+                                Do you offer data migration services?
+                            </button>
+                        </h2>
+                        <div id="implementationTwo" class="accordion-collapse collapse" data-bs-parent="#implementationAccordion">
+                            <div class="accordion-body">
+                                Yes, we provide comprehensive data migration services. Our team can help migrate your existing inventory data, customer information, and historical records from most common systems including Excel, QuickBooks, and other inventory management software.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing & Plans FAQ -->
+        <div class="row mb-5" id="pricing-faq">
+            <div class="col-12">
+                <div class="d-flex align-items-center mb-4">
+                    <i class="fas fa-credit-card fa-2x text-primary me-3"></i>
+                    <h3 class="mb-0">Pricing & Plans</h3>
+                </div>
+                
+                <div class="accordion" id="pricingAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#pricingOne">
+                                What's included in the free trial?
+                            </button>
+                        </h2>
+                        <div id="pricingOne" class="accordion-collapse collapse show" data-bs-parent="#pricingAccordion">
+                            <div class="accordion-body">
+                                Our 14-day free trial includes access to all core features: inventory tracking, basic reporting, up to 1000 SKUs, and standard integrations. You'll have full functionality to test the system with your business data.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pricingTwo">
+                                Are there any hidden fees?
+                            </button>
+                        </h2>
+                        <div id="pricingTwo" class="accordion-collapse collapse" data-bs-parent="#pricingAccordion">
+                            <div class="accordion-body">
+                                No hidden fees. Our pricing is transparent and includes all standard features. Additional costs may apply for premium integrations, custom development, or dedicated support services, which are always discussed upfront.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add more FAQ sections following the same pattern -->
+        <!-- Integrations FAQ -->
+        <div class="row mb-5" id="integrations-faq">
+            <div class="col-12">
+                <div class="d-flex align-items-center mb-4">
+                    <i class="fas fa-plug fa-2x text-primary me-3"></i>
+                    <h3 class="mb-0">Integrations</h3>
+                </div>
+                
+                <div class="accordion" id="integrationsAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#integrationsOne">
+                                Which e-commerce platforms do you integrate with?
+                            </button>
+                        </h2>
+                        <div id="integrationsOne" class="accordion-collapse collapse show" data-bs-parent="#integrationsAccordion">
+                            <div class="accordion-body">
+                                We integrate with all major e-commerce platforms including Shopify, WooCommerce, Magento, BigCommerce, and Amazon. Custom integrations are also available for proprietary systems.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Contact Promotion -->
+<section class="contact-promotion py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="contact-promo p-5 text-center">
+                    <h3 class="mb-3">Still Have Questions?</h3>
+                    <p class="mb-4">Our support team is here to help you get the answers you need.</p>
+                    <div class="contact-options">
+                        <a href="{% url 'bika:contact' %}" class="btn btn-primary btn-lg me-3">
+                            <i class="fas fa-envelope me-2"></i>Contact Support
+                        </a>
+                        <a href="tel:+1-555-123-4567" class="btn btn-outline-primary btn-lg">
+                            <i class="fas fa-phone me-2"></i>Call Us Now
+                        </a>
+                    </div>
+                    <p class="mt-3 text-muted">
+                        <i class="fas fa-clock me-2"></i>Support available Monday-Friday, 9AM-6PM EST
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // FAQ Search Functionality
+    document.getElementById('faqSearch').addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        accordionItems.forEach(item => {
+            const question = item.querySelector('.accordion-button').textContent.toLowerCase();
+            const answer = item.querySelector('.accordion-body').textContent.toLowerCase();
+            
+            if (question.includes(searchTerm) || answer.includes(searchTerm)) {
+                item.style.display = 'block';
+                // Open the accordion if it matches
+                const collapse = item.querySelector('.accordion-collapse');
+                if (!collapse.classList.contains('show')) {
+                    const button = item.querySelector('.accordion-button');
+                    button.classList.remove('collapsed');
+                    collapse.classList.add('show');
+                }
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+
+    // Smooth scrolling for category links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+    });
+
+    // Add click event for search button
+    document.getElementById('searchButton').addEventListener('click', function() {
+        document.getElementById('faqSearch').focus();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,629 @@
+{% load static %}
+
+<!-- Navigation Component -->
+<nav class="main-navigation">
+    <!-- Mobile Menu Toggle (for standalone use) -->
+    <div class="mobile-menu-header d-lg-none">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center py-3">
+                <a class="navbar-brand" href="{% url 'bika:home' %}">
+                    {% if site_info and site_info.logo %}
+                        <img src="{{ site_info.logo.url }}" alt="{{ site_info.name }}" height="35">
+                    {% else %}
+                        <span class="brand-text">
+                            <i class="fas fa-rocket text-primary me-2"></i>
+                            <strong>{% if site_info %}{{ site_info.name }}{% else %}Bika{% endif %}</strong>
+                        </span>
+                    {% endif %}
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <div class="navigation-menu collapse navbar-collapse" id="mainNavigation">
+        <div class="container">
+            <ul class="nav nav-pills nav-fill">
+                <!-- Home -->
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}" 
+                       href="{% url 'bika:home' %}">
+                        <div class="nav-icon">
+                            <i class="fas fa-home"></i>
+                        </div>
+                        <span class="nav-text">Home</span>
+                    </a>
+                </li>
+
+                <!-- About -->
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'about' %}active{% endif %}" 
+                       href="{% url 'bika:about' %}">
+                        <div class="nav-icon">
+                            <i class="fas fa-info-circle"></i>
+                        </div>
+                        <span class="nav-text">About</span>
+                    </a>
+                </li>
+
+                <!-- Services Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'services' in request.resolver_match.url_name %}active{% endif %}" 
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="nav-icon">
+                            <i class="fas fa-cogs"></i>
+                        </div>
+                        <span class="nav-text">Services</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <div class="dropdown-content">
+                            <div class="dropdown-header">
+                                <h6>Our Services</h6>
+                                <p>Comprehensive solutions for your business</p>
+                            </div>
+                            <div class="dropdown-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <a href="{% url 'bika:services' %}" class="dropdown-item main-link">
+                                            <i class="fas fa-list me-2"></i>
+                                            View All Services
+                                        </a>
+                                        {% for service in featured_services|slice:":3" %}
+                                        <a href="{{ service.get_absolute_url }}" class="dropdown-item">
+                                            <i class="{{ service.icon }} me-2"></i>
+                                            {{ service.name }}
+                                        </a>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="col-md-6">
+                                        {% for service in featured_services|slice:"3:6" %}
+                                        <a href="{{ service.get_absolute_url }}" class="dropdown-item">
+                                            <i class="{{ service.icon }} me-2"></i>
+                                            {{ service.name }}
+                                        </a>
+                                        {% empty %}
+                                        <div class="dropdown-info">
+                                            <i class="fas fa-star text-warning me-2"></i>
+                                            <small>Premium business solutions</small>
+                                        </div>
+                                        <div class="dropdown-info">
+                                            <i class="fas fa-chart-line text-success me-2"></i>
+                                            <small>Growth strategies</small>
+                                        </div>
+                                        <div class="dropdown-info">
+                                            <i class="fas fa-shield-alt text-info me-2"></i>
+                                            <small>Security solutions</small>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="dropdown-footer">
+                                <a href="{% url 'bika:contact' %}" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-phone me-1"></i> Get Custom Solution
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+
+                <!-- Solutions -->
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'solutions' %}active{% endif %}" 
+                       href="#">
+                        <div class="nav-icon">
+                            <i class="fas fa-lightbulb"></i>
+                        </div>
+                        <span class="nav-text">Solutions</span>
+                    </a>
+                </li>
+
+                <!-- Portfolio -->
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'portfolio' %}active{% endif %}" 
+                       href="#">
+                        <div class="nav-icon">
+                            <i class="fas fa-briefcase"></i>
+                        </div>
+                        <span class="nav-text">Portfolio</span>
+                    </a>
+                </li>
+
+                <!-- FAQ -->
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'faq' %}active{% endif %}" 
+                       href="{% url 'bika:faq' %}">
+                        <div class="nav-icon">
+                            <i class="fas fa-question-circle"></i>
+                        </div>
+                        <span class="nav-text">FAQ</span>
+                    </a>
+                </li>
+
+                <!-- Contact -->
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'contact' %}active{% endif %}" 
+                       href="{% url 'bika:contact' %}">
+                        <div class="nav-icon">
+                            <i class="fas fa-envelope"></i>
+                        </div>
+                        <span class="nav-text">Contact</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Quick Action Bar -->
+    <div class="quick-actions-bar bg-light border-top d-none d-lg-block">
+        <div class="container">
+            <div class="row align-items-center py-2">
+                <div class="col-md-8">
+                    <div class="quick-links">
+                        <span class="quick-label me-3">Quick Access:</span>
+                        <a href="{% url 'bika:contact' %}" class="quick-link me-3">
+                            <i class="fas fa-comment-dots me-1"></i>Live Chat
+                        </a>
+                        <a href="tel:{% if site_info and site_info.phone %}{{ site_info.phone }}{% else %}+1234567890{% endif %}" class="quick-link me-3">
+                            <i class="fas fa-phone me-1"></i>Call Support
+                        </a>
+                        <a href="{% url 'bika:faq' %}" class="quick-link">
+                            <i class="fas fa-life-ring me-1"></i>Help Center
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="navigation-utils">
+                        {% if user.is_authenticated %}
+                            <span class="user-welcome me-3">
+                                <i class="fas fa-user-circle me-1"></i>Welcome, {{ user.username }}
+                            </span>
+                            <a href="{% url 'admin:logout' %}" class="btn btn-outline-danger btn-sm">
+                                <i class="fas fa-sign-out-alt me-1"></i>Logout
+                            </a>
+                        {% else %}
+                            <a href="{% url 'admin:login' %}" class="btn btn-outline-primary btn-sm me-2">
+                                <i class="fas fa-sign-in-alt me-1"></i>Login
+                            </a>
+                            <a href="{% url 'bika:contact' %}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-user-plus me-1"></i>Register
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<style>
+/* Navigation Styles */
+.main-navigation {
+    background: white;
+    box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 1000;
+}
+
+/* Mobile Menu Header */
+.mobile-menu-header {
+    border-bottom: 1px solid #e9ecef;
+}
+
+.brand-text {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #2c3e50;
+    text-decoration: none;
+}
+
+/* Navigation Menu */
+.navigation-menu {
+    padding: 1rem 0;
+}
+
+.nav {
+    gap: 0.5rem;
+}
+
+.nav-item {
+    position: relative;
+}
+
+.nav-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 1.5rem !important;
+    color: #6c757d !important;
+    text-decoration: none;
+    border-radius: 10px !important;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    min-width: 90px;
+}
+
+.nav-link:hover {
+    color: #007bff !important;
+    background: rgba(0, 123, 255, 0.1);
+    border-color: rgba(0, 123, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.nav-link.active {
+    color: #007bff !important;
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white !important;
+    border-color: #007bff;
+    box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
+}
+
+.nav-icon {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    transition: transform 0.3s ease;
+}
+
+.nav-link:hover .nav-icon {
+    transform: scale(1.1);
+}
+
+.nav-text {
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+/* Dropdown Styles */
+.dropdown-menu {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    padding: 0;
+    margin-top: 0.5rem !important;
+    min-width: 500px;
+    background: white;
+}
+
+.dropdown-content {
+    padding: 1.5rem;
+}
+
+.dropdown-header {
+    text-align: center;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.dropdown-header h6 {
+    margin: 0;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.dropdown-header p {
+    margin: 0.25rem 0 0;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.dropdown-body {
+    margin-bottom: 1rem;
+}
+
+.dropdown-item {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    color: #495057;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-item:hover {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    transform: translateX(5px);
+}
+
+.dropdown-item.main-link {
+    font-weight: 600;
+    background: rgba(0, 123, 255, 0.1);
+    color: #007bff;
+}
+
+.dropdown-info {
+    padding: 0.5rem 1rem;
+    color: #6c757d;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-footer {
+    text-align: center;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Quick Actions Bar */
+.quick-actions-bar {
+    font-size: 0.875rem;
+}
+
+.quick-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.quick-link {
+    color: #6c757d;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.quick-link:hover {
+    color: #007bff;
+}
+
+.user-welcome {
+    color: #495057;
+    font-weight: 500;
+}
+
+.navigation-utils .btn {
+    border-radius: 20px;
+    padding: 0.25rem 1rem;
+    font-size: 0.875rem;
+}
+
+/* Mobile Responsive */
+@media (max-width: 991.98px) {
+    .mobile-menu-header {
+        display: block !important;
+    }
+    
+    .navigation-menu {
+        background: white;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .nav {
+        flex-direction: column;
+        gap: 0;
+    }
+    
+    .nav-link {
+        flex-direction: row;
+        justify-content: flex-start;
+        text-align: left;
+        padding: 1rem 1.5rem !important;
+        border-radius: 0 !important;
+        border: none !important;
+        border-left: 3px solid transparent !important;
+    }
+    
+    .nav-link.active {
+        border-left-color: #007bff !important;
+        background: rgba(0, 123, 255, 0.1);
+    }
+    
+    .nav-icon {
+        margin-bottom: 0;
+        margin-right: 1rem;
+        font-size: 1.1rem;
+        width: 20px;
+        text-align: center;
+    }
+    
+    .nav-text {
+        font-size: 1rem;
+    }
+    
+    .dropdown-menu {
+        min-width: auto;
+        box-shadow: none;
+        border: 1px solid #e9ecef;
+        margin: 0 !important;
+    }
+    
+    .quick-actions-bar {
+        display: none !important;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .dropdown-menu {
+        position: static !important;
+        transform: none !important;
+        width: 100%;
+    }
+    
+    .dropdown-content {
+        padding: 1rem;
+    }
+}
+
+/* Animation for dropdown */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown-menu.show {
+    animation: slideDown 0.3s ease;
+}
+
+/* Active state indicator */
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 6px;
+    background: #007bff;
+    border-radius: 50%;
+}
+
+@media (max-width: 991.98px) {
+    .nav-link.active::after {
+        display: none;
+    }
+}
+
+/* Hover effects for dropdown parent */
+.nav-item.dropdown:hover .nav-link {
+    background: rgba(0, 123, 255, 0.1);
+    color: #007bff !important;
+}
+
+/* Utility classes */
+.navigation-divider {
+    height: 1px;
+    background: #e9ecef;
+    margin: 0.5rem 0;
+}
+
+.navigation-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #dc3545;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize navigation functionality
+    const navigation = document.querySelector('.main-navigation');
+    
+    // Mobile menu auto-close
+    const navLinks = document.querySelectorAll('.nav-link');
+    const navbarCollapse = document.querySelector('.navbar-collapse');
+    
+    navLinks.forEach(link => {
+        link.addEventListener('click', function() {
+            if (window.innerWidth < 992) {
+                const bsCollapse = new bootstrap.Collapse(navbarCollapse);
+                bsCollapse.hide();
+            }
+        });
+    });
+
+    // Active navigation highlighting
+    function highlightActiveNav() {
+        const currentPath = window.location.pathname;
+        navLinks.forEach(link => {
+            const linkPath = link.getAttribute('href');
+            if (linkPath === currentPath || 
+                (linkPath !== '/' && currentPath.startsWith(linkPath))) {
+                link.classList.add('active');
+            } else {
+                link.classList.remove('active');
+            }
+        });
+    }
+
+    // Initialize active state
+    highlightActiveNav();
+
+    // Update active state on navigation
+    window.addEventListener('popstate', highlightActiveNav);
+
+    // Smooth scroll for same-page links
+    document.querySelectorAll('.nav-link[href^="#"]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (href.startsWith('#')) {
+                e.preventDefault();
+                const target = document.querySelector(href);
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    
+                    // Close mobile menu if open
+                    if (window.innerWidth < 992) {
+                        const bsCollapse = new bootstrap.Collapse(navbarCollapse);
+                        bsCollapse.hide();
+                    }
+                }
+            }
+        });
+    });
+
+    // Dropdown hover effect for desktop
+    if (window.innerWidth > 992) {
+        const dropdowns = document.querySelectorAll('.dropdown');
+        
+        dropdowns.forEach(dropdown => {
+            dropdown.addEventListener('mouseenter', function() {
+                const dropdownToggle = this.querySelector('.dropdown-toggle');
+                if (!dropdownToggle.classList.contains('show')) {
+                    dropdownToggle.click();
+                }
+            });
+            
+            dropdown.addEventListener('mouseleave', function() {
+                const dropdownToggle = this.querySelector('.dropdown-toggle');
+                if (dropdownToggle.classList.contains('show')) {
+                    dropdownToggle.click();
+                }
+            });
+        });
+    }
+
+    // Add loading state to navigation links
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            if (!this.getAttribute('href').startsWith('#')) {
+                const originalHtml = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading...';
+                this.style.pointerEvents = 'none';
+                
+                // Reset after 3 seconds (fallback)
+                setTimeout(() => {
+                    this.innerHTML = originalHtml;
+                    this.style.pointerEvents = '';
+                }, 3000);
+            }
+        });
+    });
+
+    // Sticky navigation effect
+    window.addEventListener('scroll', function() {
+        if (window.scrollY > 100) {
+            navigation.style.boxShadow = '0 2px 30px rgba(0, 0, 0, 0.15)';
+            navigation.style.background = 'rgba(255, 255, 255, 0.95)';
+            navigation.style.backdropFilter = 'blur(10px)';
+        } else {
+            navigation.style.boxShadow = '0 2px 15px rgba(0, 0, 0, 0.1)';
+            navigation.style.background = 'white';
+            navigation.style.backdropFilter = 'none';
+        }
+    });
+});
+</script>

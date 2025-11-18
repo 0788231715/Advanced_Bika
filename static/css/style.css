@@ -1,0 +1,45 @@
+/* Custom Styles for Bika */
+.hero-section {
+    padding-top: 100px;
+    padding-bottom: 100px;
+}
+
+.section-title {
+    font-weight: bold;
+    margin-bottom: 1rem;
+}
+
+.section-subtitle {
+    color: #6c757d;
+    margin-bottom: 3rem;
+}
+
+.feature-card, .service-card, .testimonial-card {
+    transition: transform 0.3s ease;
+    border: none;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.feature-card:hover, .service-card:hover {
+    transform: translateY(-5px);
+}
+
+.cta-section {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+/* Ensure content doesn't hide behind fixed navbar */
+body {
+    padding-top: 76px;
+}
+
+/* Dashboard styles */
+.dashboard-stats .stat-card:hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s ease;
+}

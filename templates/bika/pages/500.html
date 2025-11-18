@@ -1,0 +1,352 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Server Error - Bika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .error-hero {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        min-height: 70vh;
+        display: flex;
+        align-items: center;
+    }
+    .error-content {
+        text-align: center;
+        color: white;
+    }
+    .error-code {
+        font-size: 8rem;
+        font-weight: bold;
+        margin-bottom: 0;
+        line-height: 1;
+    }
+    .error-icon {
+        font-size: 6rem;
+        margin-bottom: 2rem;
+    }
+    .error-actions {
+        margin-top: 3rem;
+    }
+    .status-update {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 2rem 0;
+    }
+    .system-status {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        margin-bottom: 1rem;
+    }
+    .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #28a745;
+        margin-right: 0.5rem;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 500 Hero Section -->
+<section class="error-hero">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="error-content">
+                    <div class="error-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h1 class="error-code">500</h1>
+                    <h2 class="display-5 fw-bold mb-4">Server Error</h2>
+                    <p class="lead mb-4">Something went wrong on our end. Our technical team has been notified and is working to fix the issue.</p>
+                    
+                    <!-- System Status -->
+                    <div class="status-update">
+                        <div class="system-status">
+                            <div class="status-indicator"></div>
+                            <span>Our team has been alerted</span>
+                        </div>
+                        <p class="mb-0 small">We're working quickly to resolve this issue. Please try again in a few minutes.</p>
+                    </div>
+
+                    <!-- Immediate Actions -->
+                    <div class="error-actions">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <button onclick="window.location.reload()" class="btn btn-light btn-lg w-100">
+                                    <i class="fas fa-redo me-2"></i>Refresh Page
+                                </button>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <a href="{% url 'bika:home' %}" class="btn btn-outline-light btn-lg w-100">
+                                    <i class="fas fa-home me-2"></i>Go Home
+                                </a>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <a href="{% url 'bika:contact' %}" class="btn btn-outline-light btn-lg w-100">
+                                    <i class="fas fa-headset me-2"></i>Report Issue
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Technical Info (Optional - for debugging) -->
+                    <div class="mt-4">
+                        <details class="text-start">
+                            <summary class="text-white cursor-pointer small">
+                                <i class="fas fa-info-circle me-1"></i>Technical Information
+                            </summary>
+                            <div class="mt-2 p-3 bg-dark bg-opacity-25 rounded small">
+                                <p><strong>Error Reference:</strong> BIKA-500-{{ request.META.HTTP_HOST|slice:":3"|upper }}-{{ "now"|date:"YmdHis" }}</p>
+                                <p><strong>Time:</strong> {% now "F j, Y H:i:s" %}</p>
+                                <p><strong>What to do:</strong></p>
+                                <ul class="small">
+                                    <li>Refresh the page after a few minutes</li>
+                                    <li>Clear your browser cache and cookies</li>
+                                    <li>Try using a different browser</li>
+                                    <li>If the problem persists, contact our support team</li>
+                                </ul>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Service Status Section -->
+<section class="service-status py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h3 class="section-title">Service Status</h3>
+                <p class="section-subtitle">Check the status of our services</p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0">Inventory Management</h5>
+                            <span class="badge bg-success">Operational</span>
+                        </div>
+                        <p class="card-text text-muted small">Core inventory tracking and management system</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0">API Services</h5>
+                            <span class="badge bg-warning">Degraded</span>
+                        </div>
+                        <p class="card-text text-muted small">Some integrations may experience delays</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0">User Dashboard</h5>
+                            <span class="badge bg-danger">Outage</span>
+                        </div>
+                        <p class="card-text text-muted small">Temporarily unavailable - being restored</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0">Database Services</h5>
+                            <span class="badge bg-success">Operational</span>
+                        </div>
+                        <p class="card-text text-muted small">Data storage and retrieval systems</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- What Happened Section -->
+<section class="explanation-section bg-light py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <h3 class="text-center mb-4">What Caused This Error?</h3>
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-server text-primary fa-2x me-3"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5>Server Overload</h5>
+                                <p class="text-muted mb-0">High traffic volume or resource constraints on our servers.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-code text-primary fa-2x me-3"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5>Technical Glitch</h5>
+                                <p class="text-muted mb-0">Temporary issue with our application code or configuration.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-database text-primary fa-2x me-3"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5>Database Issue</h5>
+                                <p class="text-muted mb-0">Temporary connectivity or performance issue with our database.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-tools text-primary fa-2x me-3"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5>Maintenance</h5>
+                                <p class="text-muted mb-0">Scheduled or emergency maintenance affecting service.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Emergency Support -->
+<section class="emergency-support py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h3 class="mb-3">Need Immediate Assistance?</h3>
+                <p class="mb-2">If this error is affecting your business operations, our emergency support team is available 24/7.</p>
+                <p class="mb-0 text-muted">Reference ID: <code>BIKA-500-{{ request.META.HTTP_HOST|slice:":3"|upper }}-{{ "now"|date:"YmdHis" }}</code></p>
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <div class="d-grid gap-2 d-md-block">
+                    <a href="tel:+1-555-123-4567" class="btn btn-danger btn-lg me-2">
+                        <i class="fas fa-phone me-2"></i>Emergency Call
+                    </a>
+                    <a href="mailto:emergency@bika.com?subject=Emergency%20500%20Error%20-%20BIKA-500-{{ request.META.HTTP_HOST|slice:":3"|upper }}-{{ "now"|date:"YmdHis" }}" class="btn btn-outline-danger btn-lg">
+                        <i class="fas fa-envelope me-2"></i>Emergency Email
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Alternative Access -->
+<section class="alternative-access bg-light py-5">
+    <div class="container">
+        <div class="row text-center">
+            <div class="col-12">
+                <h3 class="mb-4">Alternative Access Points</h3>
+                <p class="lead mb-4">While we fix this issue, you can access our services through:</p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4 text-center mb-4">
+                <div class="alternative-item">
+                    <i class="fas fa-mobile-alt fa-2x text-primary mb-3"></i>
+                    <h5>Mobile App</h5>
+                    <p class="text-muted">Use our mobile application for basic inventory operations</p>
+                    <a href="#" class="btn btn-outline-primary">Download App</a>
+                </div>
+            </div>
+            <div class="col-md-4 text-center mb-4">
+                <div class="alternative-item">
+                    <i class="fas fa-api fa-2x text-primary mb-3"></i>
+                    <h5>API Access</h5>
+                    <p class="text-muted">Direct API access for critical operations</p>
+                    <a href="#" class="btn btn-outline-primary">API Documentation</a>
+                </div>
+            </div>
+            <div class="col-md-4 text-center mb-4">
+                <div class="alternative-item">
+                    <i class="fas fa-desktop fa-2x text-primary mb-3"></i>
+                    <h5>Legacy Interface</h5>
+                    <p class="text-muted">Access the basic web interface</p>
+                    <a href="#" class="btn btn-outline-primary">Basic Access</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh after 30 seconds
+    setTimeout(function() {
+        window.location.reload();
+    }, 30000);
+
+    // Track 500 errors for analytics
+    document.addEventListener('DOMContentLoaded', function() {
+        console.error('500 Internal Server Error - URL: ' + window.location.href);
+        
+        // You can add error tracking here
+        // if (typeof gtag !== 'undefined') {
+        //     gtag('event', '500_error', {
+        //         'event_category': 'server_error',
+        //         'event_label': window.location.href
+        //     });
+        // }
+        
+        // Update status time
+        function updateTime() {
+            const timeElement = document.getElementById('current-time');
+            if (timeElement) {
+                const now = new Date();
+                timeElement.textContent = now.toLocaleString();
+            }
+        }
+        updateTime();
+        setInterval(updateTime, 1000);
+    });
+
+    // Add to home screen prompt for mobile users
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js')
+                .then(function(registration) {
+                    console.log('ServiceWorker registration successful');
+                })
+                .catch(function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+        });
+    }
+</script>
+{% endblock %}
+

@@ -1,0 +1,470 @@
+{% load static %}
+
+<!-- Footer -->
+<footer class="footer bg-dark text-light pt-5">
+    <div class="container">
+        <!-- Main Footer Content -->
+        <div class="row">
+            <!-- Company Info -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="footer-about">
+                    <a class="navbar-brand footer-brand mb-3 d-inline-block" href="{% url 'bika:home' %}">
+                        {% if site_info %}
+                            {{ site_info.name }}
+                        {% else %}
+                            Bika
+                        {% endif %}
+                    </a>
+                    <p class="footer-description mb-4">
+                        {% if site_info and site_info.description %}
+                            {{ site_info.description }}
+                        {% else %}
+                            Bika provides exceptional business solutions to help your company grow, 
+                            increase efficiency, and achieve remarkable success in today's competitive market.
+                        {% endif %}
+                    </p>
+                    <div class="footer-contact">
+                        {% if site_info and site_info.email %}
+                            <p class="mb-2">
+                                <i class="fas fa-envelope me-2"></i>
+                                <a href="mailto:{{ site_info.email }}" class="text-light">{{ site_info.email }}</a>
+                            </p>
+                        {% endif %}
+                        {% if site_info and site_info.phone %}
+                            <p class="mb-2">
+                                <i class="fas fa-phone me-2"></i>
+                                <a href="tel:{{ site_info.phone }}" class="text-light">{{ site_info.phone }}</a>
+                            </p>
+                        {% endif %}
+                        {% if site_info and site_info.address %}
+                            <p class="mb-0">
+                                <i class="fas fa-map-marker-alt me-2"></i>
+                                <span>{{ site_info.address }}</span>
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div class="col-lg-2 col-md-6 mb-4">
+                <h5 class="footer-heading mb-4">Quick Links</h5>
+                <ul class="footer-links list-unstyled">
+                    <li class="mb-2">
+                        <a href="{% url 'bika:home' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>Home
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="{% url 'bika:about' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>About Us
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="{% url 'bika:services' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>Services
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="{% url 'bika:contact' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>Contact
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="{% url 'bika:faq' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>FAQ
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Services -->
+            <div class="col-lg-3 col-md-6 mb-4">
+                <h5 class="footer-heading mb-4">Our Services</h5>
+                <ul class="footer-links list-unstyled">
+                    {% for service in featured_services|slice:":5" %}
+                    <li class="mb-2">
+                        <a href="{{ service.get_absolute_url }}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>{{ service.name }}
+                        </a>
+                    </li>
+                    {% empty %}
+                    <li class="mb-2">
+                        <a href="{% url 'bika:services' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>Business Solutions
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="{% url 'bika:services' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>Consulting
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="{% url 'bika:services' %}" class="footer-link">
+                            <i class="fas fa-chevron-right me-2 small"></i>Support
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Newsletter & Social -->
+            <div class="col-lg-3 col-md-6 mb-4">
+                <h5 class="footer-heading mb-4">Stay Connected</h5>
+                
+                <!-- Newsletter Signup -->
+                <div class="newsletter-section mb-4">
+                    <p class="small mb-3">Subscribe to our newsletter for updates</p>
+                    <form id="footer-newsletter-form" class="newsletter-form">
+                        <div class="input-group">
+                            <input type="email" 
+                                   class="form-control newsletter-input" 
+                                   placeholder="Your email address" 
+                                   required
+                                   aria-label="Email for newsletter">
+                            <button class="btn btn-primary newsletter-btn" type="submit">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </form>
+                    <div id="newsletter-message" class="mt-2 small"></div>
+                </div>
+
+                <!-- Social Media -->
+                <div class="social-links">
+                    <p class="small mb-3">Follow us on social media</p>
+                    <div class="social-icons">
+                        {% if site_info and site_info.facebook_url %}
+                            <a href="{{ site_info.facebook_url }}" class="social-icon" target="_blank" title="Facebook">
+                                <i class="fab fa-facebook-f"></i>
+                            </a>
+                        {% else %}
+                            <a href="#" class="social-icon" title="Facebook">
+                                <i class="fab fa-facebook-f"></i>
+                            </a>
+                        {% endif %}
+                        
+                        {% if site_info and site_info.twitter_url %}
+                            <a href="{{ site_info.twitter_url }}" class="social-icon" target="_blank" title="Twitter">
+                                <i class="fab fa-twitter"></i>
+                            </a>
+                        {% else %}
+                            <a href="#" class="social-icon" title="Twitter">
+                                <i class="fab fa-twitter"></i>
+                            </a>
+                        {% endif %}
+                        
+                        {% if site_info and site_info.instagram_url %}
+                            <a href="{{ site_info.instagram_url }}" class="social-icon" target="_blank" title="Instagram">
+                                <i class="fab fa-instagram"></i>
+                            </a>
+                        {% else %}
+                            <a href="#" class="social-icon" title="Instagram">
+                                <i class="fab fa-instagram"></i>
+                            </a>
+                        {% endif %}
+                        
+                        {% if site_info and site_info.linkedin_url %}
+                            <a href="{{ site_info.linkedin_url }}" class="social-icon" target="_blank" title="LinkedIn">
+                                <i class="fab fa-linkedin-in"></i>
+                            </a>
+                        {% else %}
+                            <a href="#" class="social-icon" title="LinkedIn">
+                                <i class="fab fa-linkedin-in"></i>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Footer -->
+        <div class="footer-bottom border-top border-secondary pt-4 mt-4">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <p class="mb-0 text-center text-md-start">
+                        &copy; {% now "Y" %} 
+                        {% if site_info %}
+                            {{ site_info.name }}. 
+                        {% else %}
+                            Bika.
+                        {% endif %}
+                        All rights reserved.
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <div class="footer-bottom-links text-center text-md-end">
+                        <a href="#" class="footer-bottom-link me-3">Privacy Policy</a>
+                        <a href="#" class="footer-bottom-link me-3">Terms of Service</a>
+                        <a href="#" class="footer-bottom-link">Cookie Policy</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<style>
+/* Footer Styles */
+.footer {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%) !important;
+}
+
+.footer-brand {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: white !important;
+    text-decoration: none;
+}
+
+.footer-description {
+    line-height: 1.6;
+    color: #bdc3c7;
+}
+
+.footer-heading {
+    color: white;
+    font-weight: 600;
+    font-size: 1.1rem;
+    position: relative;
+    padding-bottom: 10px;
+}
+
+.footer-heading::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: #3498db;
+}
+
+.footer-links {
+    margin: 0;
+    padding: 0;
+}
+
+.footer-link {
+    color: #bdc3c7;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: block;
+    padding: 2px 0;
+}
+
+.footer-link:hover {
+    color: #3498db;
+    transform: translateX(5px);
+}
+
+.footer-contact p {
+    color: #bdc3c7;
+    margin-bottom: 8px;
+}
+
+.footer-contact a {
+    color: #bdc3c7;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.footer-contact a:hover {
+    color: #3498db;
+}
+
+/* Newsletter Form */
+.newsletter-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid #495057;
+    color: white;
+    border-radius: 5px 0 0 5px;
+}
+
+.newsletter-input::placeholder {
+    color: #6c757d;
+}
+
+.newsletter-input:focus {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #3498db;
+    color: white;
+    box-shadow: none;
+}
+
+.newsletter-btn {
+    border-radius: 0 5px 5px 0;
+    border: 1px solid #3498db;
+    background: #3498db;
+    transition: all 0.3s ease;
+}
+
+.newsletter-btn:hover {
+    background: #2980b9;
+    transform: translateY(-1px);
+}
+
+/* Social Icons */
+.social-icons {
+    display: flex;
+    gap: 12px;
+}
+
+.social-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    color: #bdc3c7;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+}
+
+.social-icon:hover {
+    background: #3498db;
+    color: white;
+    transform: translateY(-3px);
+    border-color: #3498db;
+}
+
+/* Footer Bottom */
+.footer-bottom {
+    border-top: 1px solid #34495e !important;
+}
+
+.footer-bottom-links {
+    font-size: 0.9rem;
+}
+
+.footer-bottom-link {
+    color: #95a5a6;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.footer-bottom-link:hover {
+    color: #3498db;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .footer {
+        text-align: center;
+    }
+    
+    .footer-heading::after {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    
+    .social-icons {
+        justify-content: center;
+    }
+    
+    .footer-bottom-links {
+        margin-top: 15px;
+    }
+    
+    .footer-contact p {
+        justify-content: center;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* Animation for newsletter message */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.newsletter-message {
+    animation: slideIn 0.3s ease;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Newsletter form submission
+    const newsletterForm = document.getElementById('footer-newsletter-form');
+    const newsletterMessage = document.getElementById('newsletter-message');
+    
+    if (newsletterForm) {
+        newsletterForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const emailInput = this.querySelector('input[type="email"]');
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const email = emailInput.value;
+            
+            // Basic email validation
+            if (!isValidEmail(email)) {
+                showNewsletterMessage('Please enter a valid email address.', 'error');
+                return;
+            }
+            
+            // Show loading state
+            const originalHtml = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            submitBtn.disabled = true;
+            
+            // Simulate API call (replace with actual API call)
+            setTimeout(() => {
+                // Show success message
+                showNewsletterMessage('Thank you for subscribing to our newsletter!', 'success');
+                
+                // Reset form
+                emailInput.value = '';
+                
+                // Restore button
+                submitBtn.innerHTML = originalHtml;
+                submitBtn.disabled = false;
+                
+                // Hide message after 5 seconds
+                setTimeout(() => {
+                    newsletterMessage.innerHTML = '';
+                    newsletterMessage.className = 'mt-2 small';
+                }, 5000);
+                
+            }, 1500);
+        });
+    }
+    
+    function isValidEmail(email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    }
+    
+    function showNewsletterMessage(message, type) {
+        newsletterMessage.innerHTML = message;
+        newsletterMessage.className = `mt-2 small newsletter-message text-${type === 'error' ? 'danger' : 'success'}`;
+    }
+    
+    // Smooth scroll for footer links
+    document.querySelectorAll('.footer-link[href^="#"]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (href.startsWith('#')) {
+                e.preventDefault();
+                const target = document.querySelector(href);
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            }
+        });
+    });
+});
+</script>

@@ -1,0 +1,281 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Bika Services - Inventory & Business Solutions{% endblock %}
+
+{% block extra_css %}
+<style>
+    .service-hero {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    }
+    .inventory-feature {
+        transition: transform 0.3s ease;
+    }
+    .inventory-feature:hover {
+        transform: translateY(-5px);
+    }
+    .feature-badge {
+        background: #0d6efd;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Services Hero Section -->
+<section class="service-hero text-white py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h1 class="display-4 fw-bold mb-4">Inventory & Business Solutions</h1>
+                <p class="lead mb-4">Comprehensive inventory management and business optimization tools designed to streamline your operations and boost profitability.</p>
+                <div class="hero-buttons">
+                    <a href="#inventory-solutions" class="btn btn-light btn-lg me-3">Explore Inventory Solutions</a>
+                    <a href="{% url 'bika:contact' %}" class="btn btn-outline-light btn-lg">Get Custom Quote</a>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <img src="{% static 'images/inventory-hero.svg' %}" alt="Inventory Management" class="img-fluid">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Inventory Solutions Section -->
+<section id="inventory-solutions" class="inventory-solutions py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h2 class="section-title">Inventory Management Solutions</h2>
+                <p class="section-subtitle">Powerful tools to take control of your inventory and supply chain</p>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Real-time Inventory Tracking -->
+            <div class="col-lg-6 mb-4">
+                <div class="card inventory-feature h-100 border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="feature-icon me-3">
+                                <i class="fas fa-chart-line fa-2x text-primary"></i>
+                            </div>
+                            <div>
+                                <span class="feature-badge">Most Popular</span>
+                            </div>
+                        </div>
+                        <h4 class="card-title">Real-time Inventory Tracking</h4>
+                        <p class="card-text">Monitor stock levels, track item movements, and get instant updates across all your locations. Never face stockouts or overstocking again.</p>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Live stock level monitoring</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Multi-location inventory sync</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Automated low stock alerts</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Barcode and QR code support</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Smart Reordering System -->
+            <div class="col-lg-6 mb-4">
+                <div class="card inventory-feature h-100 border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-robot fa-2x text-primary"></i>
+                        </div>
+                        <h4 class="card-title">Smart Reordering System</h4>
+                        <p class="card-text">AI-powered reordering that analyzes sales patterns, seasonality, and lead times to optimize your purchase orders automatically.</p>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Predictive demand forecasting</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Automated purchase order generation</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Vendor performance analytics</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Seasonal trend analysis</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Warehouse Management -->
+            <div class="col-lg-6 mb-4">
+                <div class="card inventory-feature h-100 border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-warehouse fa-2x text-primary"></i>
+                        </div>
+                        <h4 class="card-title">Warehouse Management</h4>
+                        <p class="card-text">Optimize your warehouse operations with intelligent slotting, picking routes, and storage capacity planning.</p>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Optimized picking routes</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Storage capacity planning</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Inventory location mapping</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Cycle counting automation</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Analytics -->
+            <div class="col-lg-6 mb-4">
+                <div class="card inventory-feature h-100 border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-chart-bar fa-2x text-primary"></i>
+                        </div>
+                        <h4 class="card-title">Advanced Inventory Analytics</h4>
+                        <p class="card-text">Comprehensive reporting and analytics to identify slow-moving items, calculate turnover rates, and optimize inventory investment.</p>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Inventory turnover analysis</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>ABC analysis reporting</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Profit margin by SKU</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Custom reporting dashboard</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Integration Features -->
+<section class="integration-features bg-light py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h2 class="section-title">Seamless Integrations</h2>
+                <p class="section-subtitle">Connect Bika with your existing business systems</p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-3 col-6 text-center mb-4">
+                <div class="integration-item p-3">
+                    <i class="fas fa-shopping-cart fa-2x text-primary mb-3"></i>
+                    <h6>E-commerce Platforms</h6>
+                    <small class="text-muted">Shopify, WooCommerce, Magento</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 text-center mb-4">
+                <div class="integration-item p-3">
+                    <i class="fas fa-calculator fa-2x text-primary mb-3"></i>
+                    <h6>Accounting Software</h6>
+                    <small class="text-muted">QuickBooks, Xero, Sage</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 text-center mb-4">
+                <div class="integration-item p-3">
+                    <i class="fas fa-truck fa-2x text-primary mb-3"></i>
+                    <h6>Shipping Carriers</h6>
+                    <small class="text-muted">UPS, FedEx, DHL</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-6 text-center mb-4">
+                <div class="integration-item p-3">
+                    <i class="fas fa-store fa-2x text-primary mb-3"></i>
+                    <h6>POS Systems</h6>
+                    <small class="text-muted">Square, Clover, Lightspeed</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Business Solutions -->
+<section class="business-solutions py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h2 class="section-title">Additional Business Solutions</h2>
+                <p class="section-subtitle">Complete suite of tools to power your entire business</p>
+            </div>
+        </div>
+        <div class="row">
+            {% for service in other_services %}
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card service-card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="service-icon mb-3">
+                            <i class="{{ service.icon }} fa-2x text-primary"></i>
+                        </div>
+                        <h5 class="card-title">{{ service.name }}</h5>
+                        <p class="card-text">{{ service.description|truncatewords:20 }}</p>
+                        <a href="{{ service.get_absolute_url }}" class="btn btn-outline-primary">Learn More</a>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center">
+                <p>Additional services information coming soon.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Results Section -->
+<section class="results-section bg-primary text-white py-5">
+    <div class="container">
+        <div class="row text-center">
+            <div class="col-md-3 mb-4 mb-md-0">
+                <div class="result-item">
+                    <div class="result-number display-4 fw-bold">30%</div>
+                    <div class="result-label">Reduction in Stockouts</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4 mb-md-0">
+                <div class="result-item">
+                    <div class="result-number display-4 fw-bold">25%</div>
+                    <div class="result-label">Lower Carrying Costs</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4 mb-md-0">
+                <div class="result-item">
+                    <div class="result-number display-4 fw-bold">40%</div>
+                    <div class="result-label">Faster Order Processing</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="result-item">
+                    <div class="result-number display-4 fw-bold">99.8%</div>
+                    <div class="result-label">Inventory Accuracy</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta-section py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h3 class="mb-3">Ready to Transform Your Inventory Management?</h3>
+                <p class="mb-0">Schedule a personalized demo and see how Bika can revolutionize your operations.</p>
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <a href="{% url 'bika:contact' %}" class="btn btn-primary btn-lg">Request Demo</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add smooth scrolling for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+    });
+</script>
+{% endblock %}

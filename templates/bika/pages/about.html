@@ -1,0 +1,175 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}About Bika - Our Story & Team{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<section class="page-header bg-primary text-white py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-4 fw-bold">About Bika</h1>
+                <p class="lead">Learn more about our mission, values, and the team behind our success</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Our Story Section -->
+<section class="our-story-section py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6 mb-4 mb-lg-0">
+                <h2 class="section-title mb-4">Our Story</h2>
+                <p class="mb-4">Founded in 2015, Bika began with a simple mission: to provide businesses with powerful, accessible solutions that drive growth and efficiency. What started as a small team of passionate developers has grown into a comprehensive business solutions provider serving clients across multiple industries.</p>
+                <p class="mb-4">Over the years, we've helped hundreds of businesses transform their operations, streamline processes, and achieve their strategic goals. Our commitment to innovation and customer success has been the driving force behind everything we do.</p>
+                <div class="achievements mt-5">
+                    <div class="row text-center">
+                        <div class="col-md-4 mb-3">
+                            <div class="achievement-number display-6 fw-bold text-primary">250+</div>
+                            <div class="achievement-label">Happy Clients</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="achievement-number display-6 fw-bold text-primary">500+</div>
+                            <div class="achievement-label">Projects Completed</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="achievement-number display-6 fw-bold text-primary">98%</div>
+                            <div class="achievement-label">Client Retention</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <img src="{% static 'images/about-story.jpg' %}" alt="Our Story" class="img-fluid rounded shadow">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Mission & Vision -->
+<section class="mission-vision-section bg-light py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-6 mb-4 mb-md-0">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center p-4">
+                        <div class="mission-icon mb-3">
+                            <i class="fas fa-bullseye fa-3x text-primary"></i>
+                        </div>
+                        <h3 class="card-title">Our Mission</h3>
+                        <p class="card-text">To empower businesses of all sizes with innovative, accessible technology solutions that drive efficiency, growth, and competitive advantage in an ever-evolving digital landscape.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center p-4">
+                        <div class="vision-icon mb-3">
+                            <i class="fas fa-eye fa-3x text-primary"></i>
+                        </div>
+                        <h3 class="card-title">Our Vision</h3>
+                        <p class="card-text">To become the leading provider of business transformation solutions, recognized for our commitment to excellence, innovation, and creating lasting value for our clients and communities.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Our Values -->
+<section class="values-section py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h2 class="section-title">Our Values</h2>
+                <p class="section-subtitle">The principles that guide everything we do</p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="value-card text-center p-4">
+                    <div class="value-icon mb-3">
+                        <i class="fas fa-users fa-2x text-primary"></i>
+                    </div>
+                    <h4>Collaboration</h4>
+                    <p>We believe in the power of teamwork and building strong partnerships with our clients to achieve shared success.</p>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="value-card text-center p-4">
+                    <div class="value-icon mb-3">
+                        <i class="fas fa-lightbulb fa-2x text-primary"></i>
+                    </div>
+                    <h4>Innovation</h4>
+                    <p>We continuously explore new technologies and approaches to deliver cutting-edge solutions that solve real business challenges.</p>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="value-card text-center p-4">
+                    <div class="value-icon mb-3">
+                        <i class="fas fa-handshake fa-2x text-primary"></i>
+                    </div>
+                    <h4>Integrity</h4>
+                    <p>We conduct our business with honesty, transparency, and a commitment to doing what's right for our clients and community.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Team Section -->
+<section class="team-section bg-light py-5">
+    <div class="container">
+        <div class="row text-center mb-5">
+            <div class="col-12">
+                <h2 class="section-title">Meet Our Team</h2>
+                <p class="section-subtitle">The talented professionals behind Bika's success</p>
+            </div>
+        </div>
+        <div class="row">
+            {% for member in team_members %}
+            <div class="col-lg-3 col-md-6 mb-4">
+                <div class="team-card text-center">
+                    <div class="team-image mb-3">
+                        <img src="{% if member.photo %}{{ member.photo.url }}{% else %}{% static 'images/team-placeholder.jpg' %}{% endif %}" 
+                             alt="{{ member.name }}" class="img-fluid rounded-circle">
+                    </div>
+                    <h5 class="mb-1">{{ member.name }}</h5>
+                    <p class="text-muted mb-2">{{ member.position }}</p>
+                    <p class="small">{{ member.bio|truncatewords:15 }}</p>
+                    <div class="team-social">
+                        {% if member.linkedin %}
+                        <a href="{{ member.linkedin }}" class="text-decoration-none me-2"><i class="fab fa-linkedin"></i></a>
+                        {% endif %}
+                        {% if member.twitter %}
+                        <a href="{{ member.twitter }}" class="text-decoration-none"><i class="fab fa-twitter"></i></a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center">
+                <p>Team information coming soon.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta-section bg-primary text-white py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h3 class="mb-3">Want to Join Our Team?</h3>
+                <p class="mb-0">We're always looking for talented individuals to help us grow.</p>
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <a href="{% url 'bika:about' %}" class="btn btn-light btn-lg">View Open Positions</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
