@@ -5,6 +5,87 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from .models import ContactMessage, Product, ProductCategory, CustomUser, ProductImage, ProductReview
 
+from django import forms
+from .models import Product, ProductCategory, ProductImage
+
+class ProductForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = [
+            'name', 'slug', 'sku', 'category', 'description', 'short_description', 'tags',
+            'price', 'compare_price', 'cost_price', 'tax_rate',
+            'stock_quantity', 'low_stock_threshold', 'track_inventory', 'allow_backorders',
+            'brand', 'model', 'weight', 'dimensions', 'color', 'size', 'material',
+            'status', 'condition', 'is_featured', 'is_digital',
+            'meta_title', 'meta_description'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Product Name'}),
+            'slug': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'product-slug'}),
+            'sku': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'SKU001'}),
+            'category': forms.Select(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': 'Detailed product description'}),
+            'short_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Brief product description'}),
+            'tags': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'tag1, tag2, tag3'}),
+            'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
+            'compare_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
+            'cost_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
+            'tax_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
+            'stock_quantity': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '0'}),
+            'low_stock_threshold': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '5'}),
+            'track_inventory': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'allow_backorders': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'brand': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Brand Name'}),
+            'model': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Model Number'}),
+            'weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Weight in kg'}),
+            'dimensions': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '10x5x2'}),
+            'color': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Red, Blue, etc.'}),
+            'size': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'S, M, L, XL'}),
+            'material': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Cotton, Plastic, etc.'}),
+            'status': forms.Select(attrs={'class': 'form-control'}),
+            'condition': forms.Select(attrs={'class': 'form-control'}),
+            'is_featured': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_digital': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'meta_title': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'SEO Meta Title'}),
+            'meta_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'SEO Meta Description'}),
+        }
+    
+    def clean_sku(self):
+        sku = self.cleaned_data.get('sku')
+        if sku and Product.objects.filter(sku=sku).exclude(pk=self.instance.pk).exists():
+            raise ValidationError("A product with this SKU already exists.")
+        return sku
+    
+    def clean_price(self):
+        price = self.cleaned_data.get('price')
+        if price and price < 0:
+            raise ValidationError("Price cannot be negative.")
+        return price
+    
+    def clean_compare_price(self):
+        compare_price = self.cleaned_data.get('compare_price')
+        price = self.cleaned_data.get('price')
+        
+        if compare_price and price and compare_price <= price:
+            raise ValidationError("Compare price must be greater than the current price.")
+        return compare_price
+    
+    def clean_stock_quantity(self):
+        stock_quantity = self.cleaned_data.get('stock_quantity')
+        if stock_quantity and stock_quantity < 0:
+            raise ValidationError("Stock quantity cannot be negative.")
+        return stock_quantity
+
+
+class ProductImageForm(forms.ModelForm):
+    class Meta:
+        model = ProductImage
+        fields = ['image', 'alt_text', 'is_primary']
+        widgets = {
+            'image': forms.FileInput(attrs={'class': 'form-control'}),
+            'alt_text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Image description'}),
+            'is_primary': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
 
 class ContactForm(forms.ModelForm):
     class Meta:
@@ -207,73 +288,6 @@ class VendorProfileForm(forms.ModelForm):
             'business_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
             'business_logo': forms.FileInput(attrs={'class': 'form-control'}),
         }
-class ProductForm(forms.ModelForm):
-    class Meta:
-        model = Product
-        fields = [
-            'name', 'slug', 'sku', 'category', 'description', 'short_description', 'tags',
-            'price', 'compare_price', 'cost_price', 'tax_rate',
-            'stock_quantity', 'low_stock_threshold', 'track_inventory', 'allow_backorders',
-            'brand', 'model', 'weight', 'dimensions', 'color', 'size', 'material',
-            'status', 'condition', 'is_featured', 'is_digital',
-            'meta_title', 'meta_description'
-        ]
-        widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Product Name'}),
-            'slug': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'product-slug'}),
-            'sku': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'SKU001'}),
-            'category': forms.Select(attrs={'class': 'form-control'}),
-            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': 'Detailed product description'}),
-            'short_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Brief product description'}),
-            'tags': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'tag1, tag2, tag3'}),
-            'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
-            'compare_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
-            'cost_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
-            'tax_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'}),
-            'stock_quantity': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '0'}),
-            'low_stock_threshold': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '5'}),
-            'track_inventory': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'allow_backorders': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'brand': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Brand Name'}),
-            'model': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Model Number'}),
-            'weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Weight in kg'}),
-            'dimensions': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '10x5x2'}),
-            'color': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Red, Blue, etc.'}),
-            'size': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'S, M, L, XL'}),
-            'material': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Cotton, Plastic, etc.'}),
-            'status': forms.Select(attrs={'class': 'form-control'}),
-            'condition': forms.Select(attrs={'class': 'form-control'}),
-            'is_featured': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'is_digital': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'meta_title': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'SEO Meta Title'}),
-            'meta_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'SEO Meta Description'}),
-        }
-    
-    def clean_sku(self):
-        sku = self.cleaned_data.get('sku')
-        if sku and Product.objects.filter(sku=sku).exclude(pk=self.instance.pk).exists():
-            raise ValidationError("A product with this SKU already exists.")
-        return sku
-    
-    def clean_price(self):
-        price = self.cleaned_data.get('price')
-        if price and price < 0:
-            raise ValidationError("Price cannot be negative.")
-        return price
-    
-    def clean_compare_price(self):
-        compare_price = self.cleaned_data.get('compare_price')
-        price = self.cleaned_data.get('price')
-        
-        if compare_price and price and compare_price <= price:
-            raise ValidationError("Compare price must be greater than the current price.")
-        return compare_price
-    
-    def clean_stock_quantity(self):
-        stock_quantity = self.cleaned_data.get('stock_quantity')
-        if stock_quantity and stock_quantity < 0:
-            raise ValidationError("Stock quantity cannot be negative.")
-        return stock_quantity
 
 class ProductImageForm(forms.ModelForm):
     class Meta:

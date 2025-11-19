@@ -1,38 +1,31 @@
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F  # ADD F HERE
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.core.mail import send_mail
 from django.conf import settings
 from django.views.generic import ListView, DetailView, TemplateView
-from .models import SiteInfo, Service, Testimonial, ContactMessage, FAQ
-from .forms import ContactForm, NewsletterForm
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse, JsonResponse
-from django.contrib import messages
 from django.contrib.auth import login, authenticate
-from django.views.generic import ListView, DetailView, TemplateView
-from django.db.models import Count, Q
-import django
-import sys
-from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
-from .models import Product, Wishlist, Cart, Order, OrderItem
+from django.contrib.admin.views.decorators import staff_member_required
 
-# Import ALL your models
+# Import models
 from .models import (
     SiteInfo, Service, Testimonial, ContactMessage, FAQ,
-    CustomUser, Product, ProductCategory, ProductImage, ProductReview
+    CustomUser, Product, ProductCategory, ProductImage, ProductReview,
+    Wishlist, Cart, Order, OrderItem
 )
+
+# Import forms
 from .forms import (
     ContactForm, NewsletterForm, CustomUserCreationForm, 
-    VendorRegistrationForm, CustomerRegistrationForm, ProductForm
+    VendorRegistrationForm, CustomerRegistrationForm, ProductForm,
+    ProductImageForm
 )
+from bika import models
 class HomeView(TemplateView):
     template_name = 'bika/home.html'
     
@@ -49,7 +42,6 @@ class HomeView(TemplateView):
         
         # Add featured products with error handling
         try:
-            # Check if Product model exists and has data
             featured_products = Product.objects.filter(
                 status='active',
                 is_featured=True
@@ -67,7 +59,6 @@ class HomeView(TemplateView):
             context['featured_products'] = featured_products
             
         except Exception as e:
-            # If there's any error (model doesn't exist, no data, etc.)
             print(f"Error loading featured products: {e}")
             context['featured_products'] = []
         
@@ -78,7 +69,6 @@ class HomeView(TemplateView):
             context['site_info'] = None
         
         return context
-
 
 def about_view(request):
     services = Service.objects.filter(is_active=True)
@@ -133,8 +123,7 @@ def contact_view(request):
                     fail_silently=True,
                 )
             except Exception as e:
-                # Log error but don't show to user
-                pass
+                print(f"Email error: {e}")
             
             messages.success(
                 request, 
@@ -154,8 +143,6 @@ def newsletter_subscribe(request):
     if request.method == 'POST' and request.headers.get('x-requested-with') == 'XMLHttpRequest':
         form = NewsletterForm(request.POST)
         if form.is_valid():
-            # Here you would typically save to database
-            # For now, we'll just return success
             email = form.cleaned_data['email']
             return JsonResponse({
                 'success': True,
@@ -168,76 +155,174 @@ def newsletter_subscribe(request):
             })
     return JsonResponse({'success': False, 'message': 'Invalid request'})
 
-def handler404(request, exception):
-    return render(request, 'bika/pages/404.html', status=404)
-
-def handler500(request):
-    return render(request, 'bika/pages/500.html', status=500)
-
-
-def custom_404(request, exception):
-    return render(request, 'bika/pages/404.html', status=404)
-
-def custom_500(request):
-    return render(request, 'bika/pages/500.html', status=500)
-
-# Optional: Test view to trigger 500 error (remove in production)
-def test_500(request):
-    # This will trigger a 500 error for testing
-    raise Exception("This is a test 500 error")
-
-
-
+@staff_member_required
 def admin_dashboard(request):
-    """Custom admin dashboard"""
-    if not request.user.is_staff:
-        return redirect('admin:login')
-    
+    """Enhanced admin dashboard with user and product statistics"""
     # Get current date and time
     now = timezone.now()
-    last_week = now - timedelta(days=7)
+    today = now.date()
+    today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
+    thirty_days_ago = now - timedelta(days=30)
+
+    # User Statistics
+    total_users = CustomUser.objects.count()
+    total_admins = CustomUser.objects.filter(user_type='admin').count()
+    total_vendors = CustomUser.objects.filter(user_type='vendor').count()
+    total_customers = CustomUser.objects.filter(user_type='customer').count()
     
-    # Statistics
+    # Calculate percentages
+    admin_percentage = round((total_admins / total_users * 100), 2) if total_users > 0 else 0
+    vendor_percentage = round((total_vendors / total_users * 100), 2) if total_users > 0 else 0
+    customer_percentage = round((total_customers / total_users * 100), 2) if total_users > 0 else 0
+    
+    # Active users (logged in last 30 days)
+    active_users = CustomUser.objects.filter(last_login__gte=thirty_days_ago).count()
+    active_users_percentage = round((active_users / total_users * 100), 2) if total_users > 0 else 0
+    
+    # New users today
+    new_users_today = CustomUser.objects.filter(date_joined__gte=today_start).count()
+
+    # Product Statistics
+    total_products = Product.objects.count()
+    active_products = Product.objects.filter(status='active').count()
+    draft_products = Product.objects.filter(status='draft').count()
+    
+    # Calculate active products percentage
+    active_products_percentage = round((active_products / total_products * 100), 2) if total_products > 0 else 0
+    
+    # Inventory alerts - FIXED: Use F() directly (not models.F)
+    low_stock_products = Product.objects.filter(
+        stock_quantity__lte=F('low_stock_threshold'),  # CHANGED: models.F to F
+        track_inventory=True,
+        stock_quantity__gt=0
+    ).count()
+    
+    out_of_stock_products = Product.objects.filter(
+        stock_quantity=0,
+        track_inventory=True
+    ).count()
+    
+    low_stock_count = low_stock_products + out_of_stock_products
+
+    # Vendor Statistics
+    active_vendors = CustomUser.objects.filter(
+        user_type='vendor', 
+        is_active=True,
+        product__status='active'
+    ).distinct().count()
+    
+    active_vendors_percentage = round((active_vendors / total_vendors * 100), 2) if total_vendors > 0 else 0
+
+    # Order Statistics
+    total_orders = Order.objects.count()
+    pending_orders = Order.objects.filter(status='pending').count()
+    
+    # Calculate revenue manually without SUM
+    total_revenue = 0
+    today_revenue = 0
+    
+    # Calculate total revenue manually
+    all_orders = Order.objects.all()
+    for order in all_orders:
+        if order.total_amount:
+            try:
+                total_revenue += float(order.total_amount)
+            except (TypeError, ValueError):
+                continue
+    
+    # Calculate today's revenue
+    today_orders = Order.objects.filter(created_at__gte=today_start)
+    for order in today_orders:
+        if order.total_amount:
+            try:
+                today_revenue += float(order.total_amount)
+            except (TypeError, ValueError):
+                continue
+
+    # Format revenue for display
+    total_revenue_display = "{:,.2f}".format(total_revenue)
+    today_revenue_display = "{:,.2f}".format(today_revenue)
+
+    # Category Statistics
+    total_categories = ProductCategory.objects.count()
+    active_categories = ProductCategory.objects.filter(is_active=True).count()
+
+    # Recent data
+    recent_products = Product.objects.select_related('vendor', 'category').prefetch_related('images').order_by('-created_at')[:6]
+    recent_messages = ContactMessage.objects.filter(status='new').order_by('-submitted_at')[:5]
+
+    # Existing stats for compatibility
     total_services = Service.objects.count()
     total_testimonials = Testimonial.objects.count()
     total_messages = ContactMessage.objects.count()
     new_messages = ContactMessage.objects.filter(status='new').count()
-    
-    # Additional stats
     active_services_count = Service.objects.filter(is_active=True).count()
     featured_testimonials_count = Testimonial.objects.filter(is_featured=True, is_active=True).count()
     active_faqs_count = FAQ.objects.filter(is_active=True).count()
-    
-    # Recent activity
-    recent_messages = ContactMessage.objects.all().order_by('-submitted_at')[:5]
-    
-    # System information
+
+    # Get Django and Python version dynamically
     import django
     import sys
-    from django.conf import settings
-    
+    django_version = django.get_version()
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
     context = {
-        # Basic stats
+        # Enhanced User Stats
+        'total_users': total_users,
+        'total_admins': total_admins,
+        'total_vendors': total_vendors,
+        'total_customers': total_customers,
+        'admin_percentage': admin_percentage,
+        'vendor_percentage': vendor_percentage,
+        'customer_percentage': customer_percentage,
+        'active_users': active_users,
+        'active_users_percentage': active_users_percentage,
+        'new_users_today': new_users_today,
+        
+        # Enhanced Product Stats
+        'total_products': total_products,
+        'active_products': active_products,
+        'active_products_percentage': active_products_percentage,
+        'draft_products': draft_products,
+        'low_stock_products': low_stock_products,
+        'out_of_stock_products': out_of_stock_products,
+        'low_stock_count': low_stock_count,
+        
+        # Vendor Stats
+        'active_vendors': active_vendors,
+        'active_vendors_percentage': active_vendors_percentage,
+        
+        # Order Stats
+        'total_orders': total_orders,
+        'pending_orders': pending_orders,
+        'total_revenue': total_revenue_display,
+        'today_revenue': today_revenue_display,
+        
+        # Category Stats
+        'total_categories': total_categories,
+        'active_categories': active_categories,
+        
+        # Recent Data
+        'recent_products': recent_products,
+        'recent_messages': recent_messages,
+        
+        # Existing stats for compatibility
         'total_services': total_services,
         'total_testimonials': total_testimonials,
         'total_messages': total_messages,
         'new_messages': new_messages,
-        
-        # Additional stats
         'active_services_count': active_services_count,
         'featured_testimonials_count': featured_testimonials_count,
         'active_faqs_count': active_faqs_count,
         
-        # Recent activity
-        'recent_messages': recent_messages,
-        
         # System info
-        'django_version': django.get_version(),
-        'python_version': sys.version.split()[0],
+        'django_version': django_version,
+        'python_version': python_version,
         'debug': settings.DEBUG,
     }
     
-    return render(request, 'admin/dashboard.html', context)
+    return render(request, 'bika/pages/admin/dashboard.html', context)
+
 def product_list_view(request):
     """Display all active products with filtering and pagination"""
     products = Product.objects.filter(status='active').select_related('category', 'vendor')
@@ -277,9 +362,14 @@ def product_list_view(request):
         products = products.order_by('-created_at')
     
     # Pagination
-    paginator = Paginator(products, 12)  # 12 products per page
+    paginator = Paginator(products, 12)
     page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    try:
+        page_obj = paginator.get_page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.get_page(1)
+    except EmptyPage:
+        page_obj = paginator.get_page(paginator.num_pages)
     
     # Get categories for sidebar
     categories = ProductCategory.objects.filter(is_active=True).annotate(
@@ -301,14 +391,20 @@ def product_list_view(request):
         'active_vendors': active_vendors,
     }
     return render(request, 'bika/pages/products.html', context)
-    
+
 def product_detail_view(request, slug):
     """Display single product details"""
     product = get_object_or_404(Product, slug=slug, status='active')
     
+    # Get related products
+    related_products = Product.objects.filter(
+        category=product.category,
+        status='active'
+    ).exclude(id=product.id)[:4]
+    
     context = {
         'product': product,
-        'related_products': product.get_related_products(),
+        'related_products': related_products,
     }
     return render(request, 'bika/pages/product_detail.html', context)
 
@@ -317,12 +413,19 @@ def products_by_category_view(request, category_slug):
     category = get_object_or_404(ProductCategory, slug=category_slug, is_active=True)
     products = Product.objects.filter(category=category, status='active')
     
+    # Get categories for sidebar
+    categories = ProductCategory.objects.filter(is_active=True).annotate(
+        product_count=Count('products', filter=Q(products__status='active'))
+    )
+    
     context = {
         'category': category,
         'products': products,
-        'categories': ProductCategory.objects.filter(is_active=True),
+        'categories': categories,
+        'current_category': category,
+        'total_products': products.count(),
     }
-    return render(request, 'bika/pages/products_by_category.html', context)
+    return render(request, 'bika/pages/products.html', context)
 
 def product_search_view(request):
     """Handle product search"""
@@ -344,64 +447,131 @@ def product_search_view(request):
     }
     return render(request, 'bika/pages/product_search.html', context)
 
+@login_required
 def vendor_dashboard(request):
     """Vendor dashboard"""
-    if not request.user.is_authenticated or not request.user.is_vendor():
+    if not request.user.is_vendor() and not request.user.is_staff:
         messages.error(request, "Access denied. Vendor account required.")
         return redirect('bika:home')
     
-    # Get vendor's products
-    vendor_products = Product.objects.filter(vendor=request.user)
+    # Get vendor's products (for staff, show all products)
+    if request.user.is_staff:
+        vendor_products = Product.objects.all()
+    else:
+        vendor_products = Product.objects.filter(vendor=request.user)
+    
+    # Recent orders (you'll need to implement this based on your Order model)
+    recent_orders = Order.objects.none()  # Placeholder
     
     context = {
         'total_products': vendor_products.count(),
         'active_products': vendor_products.filter(status='active').count(),
         'draft_products': vendor_products.filter(status='draft').count(),
         'recent_products': vendor_products.order_by('-created_at')[:5],
+        'recent_orders': recent_orders,
     }
-    return render(request, 'bika/pages/vendor_dashboard.html', context)
+    return render(request, 'bika/pages/vendor/dashboard.html', context)
 
+@login_required
 def vendor_product_list(request):
     """Vendor's product list"""
-    if not request.user.is_authenticated or not request.user.is_vendor():
+    if not request.user.is_vendor() and not request.user.is_staff:
         messages.error(request, "Access denied. Vendor account required.")
         return redirect('bika:home')
     
-    products = Product.objects.filter(vendor=request.user)
+    # For staff, show all products; for vendors, show only their products
+    if request.user.is_staff:
+        products = Product.objects.all()
+    else:
+        products = Product.objects.filter(vendor=request.user)
     
     context = {
         'products': products,
     }
-    return render(request, 'bika/pages/vendor_products.html', context)
+    return render(request, 'bika/pages/vendor/products.html', context)
 
+@login_required
 def vendor_add_product(request):
-    """Vendor add product form"""
-    if not request.user.is_authenticated or not request.user.is_vendor():
-        messages.error(request, "Access denied. Vendor account required.")
-        return redirect('bika:dashboard')
+    """Vendor add product form with multiple image upload"""
+    # Allow both vendors and staff to add products
+    if not request.user.is_vendor() and not request.user.is_staff:
+        messages.error(request, "Access denied. Vendor or admin account required.")
+        return redirect('bika:home')
     
     if request.method == 'POST':
-        form = ProductForm(request.POST, request.FILES)
-        if form.is_valid():
-            product = form.save(commit=False)
+        product_form = ProductForm(request.POST, request.FILES)
+        
+        if product_form.is_valid():
+            # Save product with vendor
+            product = product_form.save(commit=False)
             product.vendor = request.user
+            
+            # Set status based on button clicked
+            if 'save_draft' in request.POST:
+                product.status = 'draft'
+                message = f'Product "{product.name}" saved as draft!'
+            else:  # publish button
+                product.status = 'active'
+                message = f'Product "{product.name}" published successfully!'
+            
             product.save()
-            messages.success(request, f"Product '{product.name}' added successfully!")
+            
+            # Handle multiple images
+            images = request.FILES.getlist('images')
+            for i, image in enumerate(images):
+                ProductImage.objects.create(
+                    product=product,
+                    image=image,
+                    alt_text=product.name,
+                    display_order=i,
+                    is_primary=(i == 0)  # First image is primary
+                )
+            
+            messages.success(request, message)
+            return redirect('bika:vendor_product_list')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        # Set initial status to draft for new products
+        product_form = ProductForm(initial={'status': 'draft', 'condition': 'new'})
+    
+    context = {
+        'form': product_form,
+        'title': 'Add New Product'
+    }
+    return render(request, 'bika/pages/vendor/add_product.html', context)
+
+@login_required
+def vendor_edit_product(request, product_id):
+    """Edit existing product"""
+    # For staff, allow editing any product; for vendors, only their own products
+    if request.user.is_staff:
+        product = get_object_or_404(Product, id=product_id)
+    else:
+        product = get_object_or_404(Product, id=product_id, vendor=request.user)
+    
+    if request.method == 'POST':
+        form = ProductForm(request.POST, request.FILES, instance=product)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Product "{product.name}" updated successfully!')
             return redirect('bika:vendor_product_list')
     else:
-        form = ProductForm()
+        form = ProductForm(instance=product)
     
     context = {
         'form': form,
+        'product': product,
+        'title': 'Edit Product'
     }
-    return render(request, 'bika/pages/vendor_add_product.html', context)
+    return render(request, 'bika/pages/vendor/add_product.html', context)
 
 def vendor_register_view(request):
     """Special vendor registration"""
     # Only redirect logged-in users who are ALREADY vendors
     if request.user.is_authenticated and request.user.is_vendor():
         messages.info(request, "You are already a registered vendor!")
-        return redirect('bika:dashboard')
+        return redirect('bika:vendor_dashboard')
     
     # Show warning for logged-in customers but still show the form
     if request.user.is_authenticated and not request.user.is_vendor():
@@ -420,7 +590,7 @@ def vendor_register_view(request):
             if user is not None:
                 login(request, user)
                 messages.success(request, f"Vendor account created successfully! Welcome to Bika, {user.business_name}.")
-                return redirect('bika:dashboard')
+                return redirect('bika:vendor_dashboard')
         else:
             messages.error(request, 'Please correct the errors below.')
     else:
@@ -455,6 +625,7 @@ def register_view(request):
     
     return render(request, 'bika/pages/registration/register.html', {'form': form})
 
+# User profile views (keep your existing implementations)
 @login_required
 def user_profile(request):
     """User profile page"""
@@ -651,3 +822,16 @@ def user_settings(request):
         'user': request.user,
     }
     return render(request, 'bika/pages/user/settings.html', context)
+
+# Error handlers
+def handler404(request, exception):
+    return render(request, 'bika/pages/404.html', status=404)
+
+def handler500(request):
+    return render(request, 'bika/pages/500.html', status=500)
+
+def custom_404(request, exception):
+    return render(request, 'bika/pages/404.html', status=404)
+
+def custom_500(request):
+    return render(request, 'bika/pages/500.html', status=500)

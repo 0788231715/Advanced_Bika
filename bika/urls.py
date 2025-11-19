@@ -1,6 +1,4 @@
 from django.urls import path
-from . import views
-from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
 
@@ -15,9 +13,8 @@ urlpatterns = [
     path('contact/', views.contact_view, name='contact'),
     path('faq/', views.faq_view, name='faq'),
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
-    # AJAX/API endpoints
-    path('register/', views.register_view, name='register'),
-        # Authentication URLs - MAKE SURE THESE EXIST
+    
+    # Authentication URLs
     path('login/', auth_views.LoginView.as_view(
         template_name='bika/pages/registration/login.html',
         redirect_authenticated_user=True
@@ -26,19 +23,20 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(
         template_name='bika/pages/registration/logout.html'
     ), name='logout'),
-    path('admin/logout/', auth_views.LogoutView.as_view(
-        template_name='bika/pages/registration/logout.html'
-    ), name='logout'),
-        # Product URLs (ADD THESE)
+    
+    path('register/', views.register_view, name='register'),
+    
+    # Product URLs
     path('products/', views.product_list_view, name='product_list'),
     path('products/category/<slug:category_slug>/', views.products_by_category_view, name='products_by_category'),
     path('products/<slug:slug>/', views.product_detail_view, name='product_detail'),
     path('products/search/', views.product_search_view, name='product_search'),
     
-    # Vendor URLs (ADD THESE)
+    # Vendor URLs
     path('vendor/dashboard/', views.vendor_dashboard, name='vendor_dashboard'),
     path('vendor/products/', views.vendor_product_list, name='vendor_product_list'),
     path('vendor/products/add/', views.vendor_add_product, name='vendor_add_product'),
+    path('vendor/products/edit/<int:product_id>/', views.vendor_edit_product, name='vendor_edit_product'),
     path('vendor/register/', views.vendor_register_view, name='vendor_register'),
     
     # Password Reset URLs
@@ -66,7 +64,7 @@ urlpatterns = [
     
     path('password-reset-complete/', 
          auth_views.PasswordResetCompleteView.as_view(
-             template_name='bika/pages/pregistration/password_reset_complete.html'
+             template_name='bika/pages/registration/password_reset_complete.html'
          ), 
          name='password_reset_complete'),
 
@@ -82,7 +80,7 @@ urlpatterns = [
     path('cart/add/<int:product_id>/', views.add_to_cart, name='add_to_cart'),
     path('cart/update/<int:product_id>/', views.update_cart, name='update_cart'),
     path('cart/remove/<int:product_id>/', views.remove_from_cart, name='remove_from_cart'),
-    path('settings/', views.user_settings, name='user_settings'),     
+    path('settings/', views.user_settings, name='user_settings'),
     
     # AJAX/API endpoints
     path('newsletter/subscribe/', views.newsletter_subscribe, name='newsletter_subscribe'),
