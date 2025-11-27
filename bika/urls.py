@@ -14,15 +14,15 @@ urlpatterns = [
     path('faq/', views.faq_view, name='faq'),
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     
-    # Authentication URLs
+    # Authentication URLs - UPDATED
     path('login/', auth_views.LoginView.as_view(
         template_name='bika/pages/registration/login.html',
         redirect_authenticated_user=True
     ), name='login'),
     
-    path('logout/', auth_views.LogoutView.as_view(
-        template_name='bika/pages/registration/logout.html'
-    ), name='logout'),
+    # Use custom logout view instead of auth_views.LogoutView
+    path('logout/', views.custom_logout, name='logout'),
+    path('logout/success/', views.logout_success, name='logout_success'),
     
     path('register/', views.register_view, name='register'),
     
@@ -81,9 +81,12 @@ urlpatterns = [
     path('cart/update/<int:product_id>/', views.update_cart, name='update_cart'),
     path('cart/remove/<int:product_id>/', views.remove_from_cart, name='remove_from_cart'),
     path('settings/', views.user_settings, name='user_settings'),
+    
     # Notification URLs
     path('notifications/', views.notifications_view, name='notifications'),
     path('notifications/<int:notification_id>/read/', views.mark_notification_read, name='mark_notification_read'),
+    path('notifications/mark-all-read/', views.mark_all_notifications_read, name='mark_all_notifications_read'),
+    path('notifications/<int:notification_id>/delete/', views.delete_notification, name='delete_notification'),
     path('api/notifications/unread-count/', views.unread_notifications_count, name='unread_notifications_count'),
     
     # Storage and Tracking URLs
@@ -98,10 +101,12 @@ urlpatterns = [
     path('api/upload-dataset/', views.upload_dataset, name='upload_dataset'),
     path('api/train-model/', views.train_model, name='train_model'),
     path('api/sensor-data/', views.receive_sensor_data, name='receive_sensor_data'),
-    # Add these to your urlpatterns
-    path('notifications/mark-all-read/', views.mark_all_notifications_read, name='mark_all_notifications_read'),
-    path('notifications/<int:notification_id>/delete/', views.delete_notification, name='delete_notification'),
     
+    # Add this to your urlpatterns
+    path('cart/quick-add/<int:product_id>/', views.quick_add_to_cart, name='quick_add_to_cart'),
+    path('review/add/<int:product_id>/', views.add_review, name='add_review'),
+    
+    path('vendor/products/', views.vendor_product_list, name='vendor_product_list'),
     # AJAX/API endpoints
     path('newsletter/subscribe/', views.newsletter_subscribe, name='newsletter_subscribe'),
 ]

@@ -140,3 +140,18 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Create required directories
 os.makedirs(os.path.join(MEDIA_ROOT, 'trained_models'), exist_ok=True)
 os.makedirs(os.path.join(MEDIA_ROOT, 'datasets'), exist_ok=True)
+
+# Session settings - Keep users logged in when browser closes
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Changed to False
+SESSION_COOKIE_AGE = 1209600  # 2 weeks in seconds (optional)
+SESSION_SAVE_EVERY_REQUEST = True  # Extend session on each request
+
+# Security settings
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+
+# Cache control for security
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'

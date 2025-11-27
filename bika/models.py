@@ -129,6 +129,8 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     published_at = models.DateTimeField(blank=True, null=True)
     
+    views_count = models.PositiveIntegerField(default=0, verbose_name="View Count")
+    
     class Meta:
         ordering = ['-created_at']
     

@@ -1,0 +1,593 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}{{ product.name }} - Bika{% endblock %}
+
+{% block extra_css %}
+<style>
+.product-detail-container {
+    background: #f8f9fa;
+    min-height: 100vh;
+}
+
+.product-images {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.product-info-card {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    height: fit-content;
+}
+
+.main-image {
+    height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 10px;
+}
+
+.main-image img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.thumbnail-images img {
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.thumbnail-images img.active,
+.thumbnail-images img:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
+}
+
+.price-section {
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+}
+
+.current-price {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.original-price {
+    font-size: 1.5rem;
+    color: #6c757d;
+    text-decoration: line-through;
+}
+
+.discount-badge {
+    background: #dc3545;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.stock-badge {
+    font-size: 1rem;
+    padding: 10px 15px;
+}
+
+.quantity-controls {
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+    max-width: 150px;
+}
+
+.quantity-btn {
+    background: #f8f9fa;
+    border: none;
+    padding: 12px 15px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.quantity-btn:hover {
+    background: #e9ecef;
+}
+
+.quantity-input {
+    width: 60px;
+    border: none;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+    background: white;
+}
+
+.btn-add-to-cart {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 15px 30px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+}
+
+.btn-add-to-cart:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+}
+
+.btn-wishlist {
+    background: #fff;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 15px 25px;
+    font-size: 1.1rem;
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.btn-wishlist:hover {
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.product-tabs .nav-tabs {
+    border-bottom: 2px solid #dee2e6;
+}
+
+.product-tabs .nav-link {
+    border: none;
+    padding: 15px 25px;
+    font-weight: 600;
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.product-tabs .nav-link.active {
+    color: #007bff;
+    border-bottom: 3px solid #007bff;
+    background: transparent;
+}
+
+.tab-content {
+    padding: 30px;
+    background: white;
+    border-radius: 0 0 15px 15px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.review-item {
+    padding: 20px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.review-item:last-child {
+    border-bottom: none;
+}
+
+.rating-stars {
+    color: #ffc107;
+}
+
+.related-product-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.related-product-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+}
+
+.related-product-image {
+    height: 200px;
+    object-fit: cover;
+    border-radius: 15px 15px 0 0;
+}
+
+@media (max-width: 768px) {
+    .main-image {
+        height: 300px;
+    }
+    
+    .current-price {
+        font-size: 2rem;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .btn-add-to-cart,
+    .btn-wishlist {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Product Detail Section -->
+<div class="product-detail-container">
+    <div class="container py-5">
+        <div class="row">
+            <!-- Product Images -->
+            <div class="col-lg-6 mb-4">
+                <div class="product-images">
+                    {% if product.images.all %}
+                        <div class="main-image mb-3">
+                            <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="img-fluid" id="mainImage">
+                        </div>
+                        <div class="thumbnail-images d-flex gap-2 flex-wrap">
+                            {% for image in product.images.all %}
+                            <img src="{{ image.image.url }}" alt="{{ product.name }}" 
+                                 class="img-thumbnail {% if forloop.first %}active{% endif %}" 
+                                 style="width: 80px; height: 80px; object-fit: cover; cursor: pointer;"
+                                 onclick="changeMainImage('{{ image.image.url }}', this)">
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 400px;">
+                            <i class="fas fa-image fa-4x text-muted"></i>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Product Info -->
+            <div class="col-lg-6 mb-4">
+                <div class="product-info-card">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{% url 'bika:home' %}">Home</a></li>
+                            <li class="breadcrumb-item"><a href="{% url 'bika:product_list' %}">Products</a></li>
+                            <li class="breadcrumb-item"><a href="{% url 'bika:products_by_category' product.category.slug %}">{{ product.category.name }}</a></li>
+                            <li class="breadcrumb-item active">{{ product.name }}</li>
+                        </ol>
+                    </nav>
+                    
+                    <h1 class="product-title mb-3">{{ product.name }}</h1>
+                    
+                    <!-- Vendor Info -->
+                    <div class="vendor-info mb-3">
+                        <small class="text-muted">Sold by:</small>
+                        <strong>{{ product.vendor.business_name|default:product.vendor.username }}</strong>
+                        {% if product.vendor.business_verified %}
+                        <span class="badge bg-success ms-2"><i class="fas fa-check-circle"></i> Verified</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Price -->
+                    <div class="price-section">
+                        <div class="d-flex align-items-center flex-wrap">
+                            <span class="current-price">${{ product.price }}</span>
+                            {% if product.compare_price and product.compare_price > product.price %}
+                            <span class="original-price ms-3">${{ product.compare_price }}</span>
+                            <span class="discount-badge ms-3">
+                                Save {{ product.discount_percentage }}%
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Stock Status -->
+                    <div class="stock-status mb-4">
+                        {% if product.is_in_stock %}
+                            {% if product.is_low_stock %}
+                            <span class="badge bg-warning stock-badge">
+                                <i class="fas fa-exclamation-triangle me-1"></i>Low Stock ({{ product.stock_quantity }} left)
+                            </span>
+                            {% else %}
+                            <span class="badge bg-success stock-badge">
+                                <i class="fas fa-check me-1"></i>In Stock
+                            </span>
+                            {% endif %}
+                        {% else %}
+                        <span class="badge bg-danger stock-badge">
+                            <i class="fas fa-times me-1"></i>Out of Stock
+                        </span>
+                        {% endif %}
+                        
+                        <!-- Views Count -->
+                        <small class="text-muted ms-3">
+                            <i class="fas fa-eye me-1"></i>{{ product.views_count }} views
+                        </small>
+                    </div>
+                    
+                    <!-- Description Preview -->
+                    <div class="description-preview mb-4">
+                        <p class="text-muted">{{ product.short_description|default:product.description|truncatewords:30 }}</p>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="action-buttons mb-4">
+                        {% if product.is_in_stock %}
+                        <form method="post" action="{% url 'bika:quick_add_to_cart' product.id %}" class="d-inline-block me-3 mb-3">
+                            {% csrf_token %}
+                            <div class="d-flex align-items-center mb-3">
+                                <label class="form-label me-3 mb-0 fw-bold">Quantity:</label>
+                                <div class="quantity-controls">
+                                    <button class="quantity-btn" type="button" onclick="decreaseQuantity()">-</button>
+                                    <input type="number" name="quantity" class="quantity-input" value="1" min="1" max="{{ product.stock_quantity }}" id="quantityInput">
+                                    <button class="quantity-btn" type="button" onclick="increaseQuantity()">+</button>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-add-to-cart text-white w-100">
+                                <i class="fas fa-shopping-cart me-2"></i>Add to Cart
+                            </button>
+                        </form>
+                        {% endif %}
+                        
+                        <form method="post" action="{% if in_wishlist %}{% url 'bika:remove_from_wishlist' product.id %}{% else %}{% url 'bika:add_to_wishlist' product.id %}{% endif %}" class="d-inline-block">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-wishlist w-100">
+                                <i class="{% if in_wishlist %}fas{% else %}far{% endif %} fa-heart me-2"></i>
+                                {% if in_wishlist %}Remove from Wishlist{% else %}Add to Wishlist{% endif %}
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <!-- Product Meta -->
+                    <div class="product-meta">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <small class="text-muted"><strong>SKU:</strong> {{ product.sku|default:"N/A" }}</small>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted"><strong>Category:</strong> {{ product.category.name }}</small>
+                            </div>
+                            {% if product.brand %}
+                            <div class="col-md-6">
+                                <small class="text-muted"><strong>Brand:</strong> {{ product.brand }}</small>
+                            </div>
+                            {% endif %}
+                            {% if product.weight %}
+                            <div class="col-md-6">
+                                <small class="text-muted"><strong>Weight:</strong> {{ product.weight }} kg</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Product Details Tabs -->
+        <div class="product-tabs mt-5">
+            <ul class="nav nav-tabs" id="productTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="description-tab" data-bs-toggle="tab" data-bs-target="#description" type="button" role="tab">
+                        <i class="fas fa-file-alt me-2"></i>Description
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="specifications-tab" data-bs-toggle="tab" data-bs-target="#specifications" type="button" role="tab">
+                        <i class="fas fa-list me-2"></i>Specifications
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="reviews-tab" data-bs-toggle="tab" data-bs-target="#reviews" type="button" role="tab">
+                        <i class="fas fa-star me-2"></i>Reviews ({{ reviews.count }})
+                    </button>
+                </li>
+            </ul>
+            
+            <div class="tab-content" id="productTabsContent">
+                <!-- Description -->
+                <div class="tab-pane fade show active" id="description" role="tabpanel">
+                    <div class="product-description">
+                        {{ product.description|linebreaks }}
+                    </div>
+                </div>
+                
+                <!-- Specifications -->
+                <div class="tab-pane fade" id="specifications" role="tabpanel">
+                    <table class="table table-borderless">
+                        <tbody>
+                            <tr>
+                                <td style="width: 30%;"><strong>SKU</strong></td>
+                                <td>{{ product.sku|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Brand</strong></td>
+                                <td>{{ product.brand|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Model</strong></td>
+                                <td>{{ product.model|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Weight</strong></td>
+                                <td>{{ product.weight|default:"Not specified" }} kg</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Dimensions</strong></td>
+                                <td>{{ product.dimensions|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Color</strong></td>
+                                <td>{{ product.color|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Size</strong></td>
+                                <td>{{ product.size|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Material</strong></td>
+                                <td>{{ product.material|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Condition</strong></td>
+                                <td>{{ product.get_condition_display }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Reviews -->
+                <div class="tab-pane fade" id="reviews" role="tabpanel">
+                    {% if reviews %}
+                        {% for review in reviews %}
+                        <div class="review-item">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <strong class="d-block">{{ review.user.username }}</strong>
+                                    <div class="rating-stars">
+                                        {% for i in "12345" %}
+                                            {% if forloop.counter <= review.rating %}
+                                            <i class="fas fa-star"></i>
+                                            {% else %}
+                                            <i class="far fa-star"></i>
+                                            {% endif %}
+                                        {% endfor %}
+                                        <span class="text-muted ms-2">{{ review.created_at|date:"M d, Y" }}</span>
+                                    </div>
+                                </div>
+                                {% if review.is_verified_purchase %}
+                                <span class="badge bg-success"><i class="fas fa-check"></i> Verified Purchase</span>
+                                {% endif %}
+                            </div>
+                            {% if review.title %}
+                            <h6 class="mb-2">{{ review.title }}</h6>
+                            {% endif %}
+                            <p class="mb-0">{{ review.comment }}</p>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                        <h4>No Reviews Yet</h4>
+                        <p class="text-muted">Be the first to review this product!</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if user.is_authenticated %}
+                    <div class="add-review mt-5 pt-4 border-top">
+                        <h5 class="mb-4">Add Your Review</h5>
+                        <form method="post" action="{% url 'bika:add_review' product.id %}">
+                            {% csrf_token %}
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Rating</label>
+                                    <select name="rating" class="form-select" required>
+                                        <option value="">Select Rating</option>
+                                        <option value="5">5 Stars - Excellent</option>
+                                        <option value="4">4 Stars - Very Good</option>
+                                        <option value="3">3 Stars - Good</option>
+                                        <option value="2">2 Stars - Fair</option>
+                                        <option value="1">1 Star - Poor</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Review Title (Optional)</label>
+                                    <input type="text" name="title" class="form-control" placeholder="Brief summary of your review">
+                                </div>
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Your Review</label>
+                                    <textarea name="comment" class="form-control" rows="4" placeholder="Share your experience with this product..." required></textarea>
+                                </div>
+                                <div class="col-md-12">
+                                    <button type="submit" class="btn btn-primary">Submit Review</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mt-4">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Please <a href="{% url 'bika:login' %}" class="alert-link">login</a> to add a review.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Related Products -->
+        {% if related_products %}
+        <div class="related-products mt-5">
+            <h3 class="mb-4">Related Products</h3>
+            <div class="row">
+                {% for related_product in related_products %}
+                <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+                    <div class="card related-product-card">
+                        {% if related_product.images.first %}
+                        <img src="{{ related_product.images.first.image.url }}" class="card-img-top related-product-image" alt="{{ related_product.name }}">
+                        {% else %}
+                        <div class="card-img-top related-product-image bg-light d-flex align-items-center justify-content-center">
+                            <i class="fas fa-image fa-2x text-muted"></i>
+                        </div>
+                        {% endif %}
+                        <div class="card-body">
+                            <h6 class="card-title">{{ related_product.name|truncatewords:5 }}</h6>
+                            <p class="card-text text-primary fw-bold mb-2">${{ related_product.price }}</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <a href="{% url 'bika:product_detail' related_product.slug %}" class="btn btn-outline-primary btn-sm">View Details</a>
+                                {% if related_product.is_in_stock %}
+                                <form method="post" action="{% url 'bika:add_to_cart' related_product.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="quantity" value="1">
+                                    <button type="submit" class="btn btn-success btn-sm">
+                                        <i class="fas fa-cart-plus"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function changeMainImage(imageUrl, element) {
+    // Update main image
+    document.getElementById('mainImage').src = imageUrl;
+    
+    // Update active thumbnail
+    document.querySelectorAll('.thumbnail-images img').forEach(thumb => {
+        thumb.classList.remove('active');
+    });
+    element.classList.add('active');
+}
+
+function increaseQuantity() {
+    const input = document.getElementById('quantityInput');
+    const max = parseInt(input.max);
+    if (parseInt(input.value) < max) {
+        input.value = parseInt(input.value) + 1;
+    }
+}
+
+function decreaseQuantity() {
+    const input = document.getElementById('quantityInput');
+    if (parseInt(input.value) > 1) {
+        input.value = parseInt(input.value) - 1;
+    }
+}
+
+// Initialize tab functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Activate first tab
+    const firstTab = new bootstrap.Tab(document.getElementById('description-tab'));
+    firstTab.show();
+});
+</script>
+{% endblock %}

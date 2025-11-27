@@ -15,8 +15,14 @@
                     <h2 class="mb-3">Successfully Logged Out</h2>
                     <p class="text-muted mb-4">You have been successfully logged out of your Bika account.</p>
                     
+                    <!-- Security Information -->
+                    <div class="alert alert-info mb-4">
+                        <i class="fas fa-shield-alt me-2"></i>
+                        <strong>Security Notice:</strong> Your session has been completely ended.
+                    </div>
+                    
                     <div class="logout-actions">
-                        <a href="{% url 'bika:login' %}" class="btn btn-primary me-3">  <!-- CHANGED HERE -->
+                        <a href="{% url 'bika:login' %}" class="btn btn-primary me-3">
                             <i class="fas fa-sign-in-alt me-2"></i>Sign In Again
                         </a>
                         <a href="{% url 'bika:home' %}" class="btn btn-outline-secondary">
@@ -26,7 +32,7 @@
                     
                     <div class="mt-4">
                         <small class="text-muted">
-                            For security reasons, please close your browser window.
+                            For security reasons, please close your browser window if you're on a shared computer.
                         </small>
                     </div>
                 </div>
@@ -34,6 +40,26 @@
         </div>
     </div>
 </section>
+
+<!-- Security Script to Prevent Back Navigation -->
+<script>
+    // Prevent back button navigation after logout
+    history.pushState(null, null, location.href);
+    window.onpopstate = function(event) {
+        history.go(1);
+    };
+
+    // Clear any sensitive data from storage
+    localStorage.removeItem('sensitive_data');
+    sessionStorage.clear();
+
+    // Disable form resubmission on refresh
+    if (window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+    }
+
+    console.log('Logout security measures activated');
+</script>
 
 <style>
 .logout-section {
@@ -44,6 +70,7 @@
     background: white;
     border-radius: 15px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e9ecef;
 }
 </style>
 {% endblock %}

@@ -1,5 +1,5 @@
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.db.models import Count, Q, F  # ADD F HERE
+from django.db.models import Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
@@ -8,18 +8,16 @@ from django.contrib import messages
 from django.core.mail import send_mail
 from django.conf import settings
 from django.views.generic import ListView, DetailView, TemplateView
-from django.contrib.auth import login, authenticate
+from django.contrib.auth import login, authenticate, logout  # ADDED logout here
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
-# api_views.py - REAL IMPLEMENTATION
-from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_protect
 import json
 import pandas as pd
-
-from bika.notification import RealNotificationService
-from bika.service import RealProductAIService
+import datetime
 
 # Import models
 from .models import (
@@ -429,8 +427,12 @@ def product_list_view(request):
     return render(request, 'bika/pages/products.html', context)
 
 def product_detail_view(request, slug):
-    """Display single product details"""
+    """Display single product details with enhanced functionality"""
     product = get_object_or_404(Product, slug=slug, status='active')
+    
+    # Safely increment view count
+    product.views_count += 1
+    product.save()
     
     # Get related products
     related_products = Product.objects.filter(
@@ -438,9 +440,30 @@ def product_detail_view(request, slug):
         status='active'
     ).exclude(id=product.id)[:4]
     
+    # Get product reviews
+    reviews = ProductReview.objects.filter(product=product, is_approved=True).order_by('-created_at')
+    
+    # Check if product is in user's wishlist
+    in_wishlist = False
+    if request.user.is_authenticated:
+        in_wishlist = Wishlist.objects.filter(user=request.user, product=product).exists()
+    
+    # Check if product is in user's cart
+    in_cart = False
+    cart_quantity = 0
+    if request.user.is_authenticated:
+        cart_item = Cart.objects.filter(user=request.user, product=product).first()
+        if cart_item:
+            in_cart = True
+            cart_quantity = cart_item.quantity
+    
     context = {
         'product': product,
         'related_products': related_products,
+        'reviews': reviews,
+        'in_wishlist': in_wishlist,
+        'in_cart': in_cart,
+        'cart_quantity': cart_quantity,
     }
     return render(request, 'bika/pages/product_detail.html', context)
 
@@ -1108,3 +1131,363 @@ def delete_notification(request, notification_id):
     
     messages.success(request, 'Notification deleted!')
     return redirect('bika:notifications')
+
+@never_cache
+@csrf_protect
+def custom_logout(request):
+    """Proper logout that clears session and prevents back button access"""
+    # Store some info before logout for feedback
+    username = request.user.username if request.user.is_authenticated else "User"
+    
+    # Logout the user - this clears the session
+    logout(request)
+    
+    # Create redirect response
+    response = redirect('bika:logout_success')
+    
+    # Completely clear the session cookie
+    request.session.flush()  # Remove session from database
+    response.delete_cookie('sessionid')
+    response.delete_cookie('csrftoken')
+    
+    # Set security headers to prevent caching
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = 'Fri, 01 Jan 1990 00:00:00 GMT'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['X-Frame-Options'] = 'DENY'
+    
+    # Add message for feedback
+    from django.contrib import messages
+    messages.success(request, f'Goodbye {username}! You have been successfully logged out.')
+    
+    return response
+
+def logout_success(request):
+    """Logout success page with proper security headers"""
+    response = render(request, 'bika/pages/registration/logout.html')
+    
+    # Ensure no caching of this page
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = 'Fri, 01 Jan 1990 00:00:00 GMT'
+    
+    return response
+# UPDATE THE CUSTOM LOGOUT FUNCTION - FIX THE DECORATORS
+@never_cache
+@csrf_protect
+@login_required
+def custom_logout(request):
+    """Proper logout that clears session and prevents back button access"""
+    # Store some info before logout for feedback
+    username = request.user.username
+    
+    # Logout the user - this clears the session
+    logout(request)
+    
+    # Create redirect response
+    response = redirect('bika:logout_success')
+    
+    # Completely clear the session cookie
+    request.session.flush()  # Remove session from database
+    response.delete_cookie('sessionid')
+    response.delete_cookie('csrftoken')
+    
+    # Set security headers to prevent caching
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = 'Fri, 01 Jan 1990 00:00:00 GMT'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['X-Frame-Options'] = 'DENY'
+    
+    # Add message for feedback
+    messages.success(request, f'Goodbye {username}! You have been successfully logged out.')
+    
+    return response
+
+def logout_success(request):
+    """Logout success page with proper security headers"""
+    response = render(request, 'bika/pages/registration/logout.html')
+    
+    # Ensure no caching of this page
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = 'Fri, 01 Jan 1990 00:00:00 GMT'
+    
+    return response
+
+# ADD THIS FUNCTION FOR PRODUCT DETAIL PAGE
+def product_detail_view(request, slug):
+    """Display single product details with enhanced functionality"""
+    product = get_object_or_404(Product, slug=slug, status='active')
+    
+    # Increment view count
+    product.views_count += 1
+    product.save()
+    
+    # Get related products
+    related_products = Product.objects.filter(
+        category=product.category,
+        status='active'
+    ).exclude(id=product.id)[:4]
+    
+    # Get product reviews
+    reviews = ProductReview.objects.filter(product=product, is_approved=True).order_by('-created_at')
+    
+    # Check if product is in user's wishlist
+    in_wishlist = False
+    if request.user.is_authenticated:
+        in_wishlist = Wishlist.objects.filter(user=request.user, product=product).exists()
+    
+    # Check if product is in user's cart
+    in_cart = False
+    cart_quantity = 0
+    if request.user.is_authenticated:
+        cart_item = Cart.objects.filter(user=request.user, product=product).first()
+        if cart_item:
+            in_cart = True
+            cart_quantity = cart_item.quantity
+    
+    context = {
+        'product': product,
+        'related_products': related_products,
+        'reviews': reviews,
+        'in_wishlist': in_wishlist,
+        'in_cart': in_cart,
+        'cart_quantity': cart_quantity,
+    }
+    return render(request, 'bika/pages/product_detail.html', context)
+
+# ADD THESE HELPER FUNCTIONS FOR PRODUCT DETAIL PAGE
+@login_required
+def add_review(request, product_id):
+    """Add product review"""
+    if request.method == 'POST':
+        product = get_object_or_404(Product, id=product_id)
+        rating = request.POST.get('rating')
+        comment = request.POST.get('comment')
+        
+        # Check if user already reviewed this product
+        existing_review = ProductReview.objects.filter(
+            user=request.user, 
+            product=product
+        ).first()
+        
+        if existing_review:
+            messages.warning(request, 'You have already reviewed this product!')
+        else:
+            ProductReview.objects.create(
+                user=request.user,
+                product=product,
+                rating=rating,
+                comment=comment,
+                is_approved=True  # Auto-approve for now
+            )
+            messages.success(request, 'Thank you for your review!')
+        
+        return redirect('bika:product_detail', slug=product.slug)
+    
+    return redirect('bika:home')
+
+@login_required
+def quick_add_to_cart(request, product_id):
+    """Quick add to cart from product detail page"""
+    if request.method == 'POST':
+        product = get_object_or_404(Product, id=product_id)
+        quantity = int(request.POST.get('quantity', 1))
+        
+        if product.stock_quantity < quantity:
+            messages.error(request, f'Only {product.stock_quantity} items available!')
+            return redirect('bika:product_detail', slug=product.slug)
+        
+        cart_item, created = Cart.objects.get_or_create(
+            user=request.user,
+            product=product,
+            defaults={'quantity': quantity}
+        )
+        
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+        
+        messages.success(request, f'{product.name} added to cart!')
+        return redirect('bika:product_detail', slug=product.slug)
+    
+    return redirect('bika:home')
+
+@login_required
+def quick_add_to_cart(request, product_id):
+    """Quick add to cart from product detail page"""
+    if request.method == 'POST':
+        product = get_object_or_404(Product, id=product_id)
+        quantity = int(request.POST.get('quantity', 1))
+        
+        # Check stock availability
+        if product.stock_quantity < quantity:
+            messages.error(request, f'Only {product.stock_quantity} items available!')
+            return redirect('bika:product_detail', slug=product.slug)
+        
+        # Add to cart
+        cart_item, created = Cart.objects.get_or_create(
+            user=request.user,
+            product=product,
+            defaults={'quantity': quantity}
+        )
+        
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+        
+        messages.success(request, f'{product.name} added to cart!')
+        
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            cart_count = Cart.objects.filter(user=request.user).count()
+            return JsonResponse({
+                'success': True,
+                'message': f'{product.name} added to cart!',
+                'cart_count': cart_count
+            })
+        
+        return redirect('bika:product_detail', slug=product.slug)
+    
+    return redirect('bika:home')
+
+@login_required
+def add_review(request, product_id):
+    """Add product review"""
+    if request.method == 'POST':
+        product = get_object_or_404(Product, id=product_id)
+        rating = request.POST.get('rating')
+        comment = request.POST.get('comment')
+        
+        # Validate rating
+        if not rating or not rating.isdigit() or int(rating) not in [1, 2, 3, 4, 5]:
+            messages.error(request, 'Please select a valid rating!')
+            return redirect('bika:product_detail', slug=product.slug)
+        
+        # Check if user already reviewed this product
+        existing_review = ProductReview.objects.filter(
+            user=request.user, 
+            product=product
+        ).first()
+        
+        if existing_review:
+            messages.warning(request, 'You have already reviewed this product!')
+        else:
+            ProductReview.objects.create(
+                user=request.user,
+                product=product,
+                rating=int(rating),
+                comment=comment,
+                is_approved=True  # Auto-approve for now
+            )
+            messages.success(request, 'Thank you for your review!')
+        
+        return redirect('bika:product_detail', slug=product.slug)
+    
+    return redirect('bika:home')
+@login_required
+def vendor_product_list(request):
+    """Vendor's product list with enhanced functionality"""
+    if not request.user.is_vendor() and not request.user.is_staff:
+        messages.error(request, "Access denied. Vendor account required.")
+        return redirect('bika:home')
+    
+    # Handle bulk actions via POST
+    if request.method == 'POST' and request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return handle_bulk_actions(request)
+    
+    # For staff, show all products; for vendors, show only their products
+    if request.user.is_staff:
+        products = Product.objects.all()
+    else:
+        products = Product.objects.filter(vendor=request.user)
+    
+    # Apply filters
+    query = request.GET.get('q', '')
+    status_filter = request.GET.get('status', '')
+    stock_filter = request.GET.get('stock', '')
+    
+    if query:
+        products = products.filter(
+            Q(name__icontains=query) | 
+            Q(sku__icontains=query) |
+            Q(description__icontains=query) |
+            Q(category__name__icontains=query)
+        )
+    
+    if status_filter:
+        products = products.filter(status=status_filter)
+    
+    if stock_filter == 'in_stock':
+        products = products.filter(stock_quantity__gt=0)
+    elif stock_filter == 'low_stock':
+        products = products.filter(
+            stock_quantity__gt=0, 
+            stock_quantity__lte=F('low_stock_threshold')
+        )
+    elif stock_filter == 'out_of_stock':
+        products = products.filter(stock_quantity=0)
+    
+    # Calculate statistics
+    active_products_count = products.filter(status='active').count()
+    draft_products_count = products.filter(status='draft').count()
+    low_stock_count = products.filter(
+        stock_quantity__gt=0, 
+        stock_quantity__lte=F('low_stock_threshold')
+    ).count()
+    out_of_stock_count = products.filter(stock_quantity=0).count()
+    
+    # Pagination
+    paginator = Paginator(products.order_by('-updated_at'), 10)
+    page_number = request.GET.get('page')
+    try:
+        page_obj = paginator.get_page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.get_page(1)
+    except EmptyPage:
+        page_obj = paginator.get_page(paginator.num_pages)
+    
+    context = {
+        'products': page_obj,
+        'active_products_count': active_products_count,
+        'draft_products_count': draft_products_count,
+        'low_stock_count': low_stock_count,
+        'out_of_stock_count': out_of_stock_count,
+        'query': query,
+        'status_filter': status_filter,
+        'stock_filter': stock_filter,
+    }
+    return render(request, 'bika/pages/vendor/products.html', context)
+
+def handle_bulk_actions(request):
+    """Handle bulk actions for products"""
+    try:
+        data = request.POST
+        action = data.get('action')
+        product_ids = json.loads(data.get('product_ids', '[]'))
+        
+        if not product_ids:
+            return JsonResponse({'success': False, 'message': 'No products selected'})
+        
+        # Get products (respect user permissions)
+        if request.user.is_staff:
+            products = Product.objects.filter(id__in=product_ids)
+        else:
+            products = Product.objects.filter(id__in=product_ids, vendor=request.user)
+        
+        if action == 'activate':
+            products.update(status='active')
+            return JsonResponse({'success': True, 'message': f'{products.count()} products activated'})
+        elif action == 'draft':
+            products.update(status='draft')
+            return JsonResponse({'success': True, 'message': f'{products.count()} products moved to draft'})
+        elif action == 'delete':
+            count = products.count()
+            products.delete()
+            return JsonResponse({'success': True, 'message': f'{count} products deleted'})
+        else:
+            return JsonResponse({'success': False, 'message': 'Invalid action'})
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)})

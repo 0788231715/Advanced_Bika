@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from bika.models import CustomUser, Product, ProductAlert, Notification
 from bika.service import RealProductAIService
+from users import models
 
 class RealNotificationService:
     def __init__(self):
