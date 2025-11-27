@@ -155,3 +155,20 @@ CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+
+# Payment Configuration
+STRIPE_PUBLISHABLE_KEY = 'your_stripe_publishable_key'
+STRIPE_SECRET_KEY = 'your_stripe_secret_key'
+STRIPE_WEBHOOK_SECRET = 'your_stripe_webhook_secret'
+
+# M-Pesa Configuration
+MPESA_CONSUMER_KEY = 'your_mpesa_consumer_key'
+MPESA_CONSUMER_SECRET = 'your_mpesa_consumer_secret'
+MPESA_SHORTCODE = 'your_shortcode'
+MPESA_PASSKEY = 'your_passkey'
+MPESA_CALLBACK_URL = 'https://yourdomain.com/mpesa/callback/'
+
+# PayPal Configuration
+PAYPAL_CLIENT_ID = 'your_paypal_client_id'
+PAYPAL_CLIENT_SECRET = 'your_paypal_client_secret'
+PAYPAL_MODE = 'sandbox'  # or 'live'

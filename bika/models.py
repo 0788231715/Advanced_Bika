@@ -587,3 +587,185 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.title} - {self.user.username}"
+    
+# Enhanced Payment Models
+class Payment(models.Model):
+    PAYMENT_METHODS = [
+        # Mobile Money - Tanzania
+        ('mpesa', 'M-Pesa (TZ)'),
+        ('tigo_tz', 'Tigo Pesa (TZ)'),
+        ('airtel_tz', 'Airtel Money (TZ)'),
+        ('halotel_tz', 'Halotel (TZ)'),
+        
+        # Mobile Money - Rwanda
+        ('mtn_rw', 'MTN Mobile Money (RW)'),
+        ('airtel_rw', 'Airtel Money (RW)'),
+        
+        # Mobile Money - Uganda
+        ('mtn_ug', 'MTN Mobile Money (UG)'),
+        ('airtel_ug', 'Airtel Money (UG)'),
+        
+        # Mobile Money - Kenya
+        ('mpesa_ke', 'M-Pesa (KE)'),
+        
+        # Cards & International
+        ('visa', 'Visa Card'),
+        ('mastercard', 'MasterCard'),
+        ('amex', 'American Express'),
+        ('paypal', 'PayPal'),
+        ('bank_transfer', 'Bank Transfer'),
+    ]
+    
+    PAYMENT_STATUS = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+        ('refunded', 'Refunded'),
+    ]
+    
+    CURRENCIES = [
+        ('TZS', 'Tanzanian Shilling'),
+        ('RWF', 'Rwandan Franc'),
+        ('UGX', 'Ugandan Shilling'),
+        ('KES', 'Kenyan Shilling'),
+        ('USD', 'US Dollar'),
+        ('EUR', 'Euro'),
+    ]
+    
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='payments')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, choices=CURRENCIES, default='TZS')
+    status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='pending')
+    transaction_id = models.CharField(max_length=100, blank=True, unique=True)
+    
+    # Mobile Money fields
+    mobile_money_phone = models.CharField(max_length=20, blank=True)
+    mobile_money_provider = models.CharField(max_length=50, blank=True)
+    mobile_money_transaction_id = models.CharField(max_length=100, blank=True)
+    
+    # Card fields
+    card_last4 = models.CharField(max_length=4, blank=True)
+    card_brand = models.CharField(max_length=20, blank=True)
+    card_country = models.CharField(max_length=2, blank=True)
+    
+    # International payment fields
+    payer_email = models.EmailField(blank=True)
+    payer_country = models.CharField(max_length=2, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['transaction_id']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+    
+    def __str__(self):
+        return f"Payment #{self.id} - {self.amount} {self.currency}"
+    
+    def is_successful(self):
+        return self.status == 'completed'
+    
+    def get_payment_provider_config(self):
+        """Get configuration for payment provider"""
+        provider_map = {
+            'mpesa': 'mpesa_tz',
+            'tigo_tz': 'tigo_tz',
+            'airtel_tz': 'airtel_tz',
+            'halotel_tz': 'halotel_tz',
+            'mtn_rw': 'mtn_rw',
+            'airtel_rw': 'airtel_rw',
+            'mtn_ug': 'mtn_ug',
+            'airtel_ug': 'airtel_ug',
+            'mpesa_ke': 'mpesa_ke',
+        }
+        provider = provider_map.get(self.payment_method)
+        if provider:
+            return PaymentGatewaySettings.objects.filter(gateway=provider, is_active=True).first()
+        return None
+    
+    def get_country_code(self):
+        """Get country code from payment method"""
+        country_map = {
+            'mpesa': 'TZ', 'tigo_tz': 'TZ', 'airtel_tz': 'TZ', 'halotel_tz': 'TZ',
+            'mtn_rw': 'RW', 'airtel_rw': 'RW',
+            'mtn_ug': 'UG', 'airtel_ug': 'UG',
+            'mpesa_ke': 'KE',
+        }
+        return country_map.get(self.payment_method, 'US')
+
+class PaymentGatewaySettings(models.Model):
+    """Enhanced payment gateway configuration"""
+    GATEWAY_CHOICES = [
+        # Tanzania
+        ('mpesa_tz', 'M-Pesa Tanzania'),
+        ('tigo_tz', 'Tigo Pesa Tanzania'),
+        ('airtel_tz', 'Airtel Money Tanzania'),
+        ('halotel_tz', 'Halotel Tanzania'),
+        
+        # Rwanda
+        ('mtn_rw', 'MTN Rwanda'),
+        ('airtel_rw', 'Airtel Rwanda'),
+        
+        # Uganda
+        ('mtn_ug', 'MTN Uganda'),
+        ('airtel_ug', 'Airtel Uganda'),
+        
+        # Kenya
+        ('mpesa_ke', 'M-Pesa Kenya'),
+        
+        # International
+        ('stripe', 'Stripe'),
+        ('paypal', 'PayPal'),
+    ]
+    
+    gateway = models.CharField(max_length=20, choices=GATEWAY_CHOICES, unique=True)
+    is_active = models.BooleanField(default=False)
+    display_name = models.CharField(max_length=100, blank=True)
+    supported_countries = models.JSONField(default=list)  # List of country codes
+    supported_currencies = models.JSONField(default=list)  # List of currencies
+    
+    # API Credentials
+    api_key = models.CharField(max_length=255, blank=True)
+    api_secret = models.CharField(max_length=255, blank=True)
+    merchant_id = models.CharField(max_length=100, blank=True)
+    webhook_secret = models.CharField(max_length=255, blank=True)
+    
+    # Configuration
+    base_url = models.URLField(blank=True)
+    callback_url = models.URLField(blank=True)
+    environment = models.CharField(max_length=10, default='sandbox', choices=[('sandbox', 'Sandbox'), ('live', 'Live')])
+    
+    # Fees
+    transaction_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    transaction_fee_fixed = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.get_gateway_display()} Settings"
+    
+    def get_supported_countries_display(self):
+        return ", ".join(self.supported_countries)
+    
+    def get_supported_currencies_display(self):
+        return ", ".join(self.supported_currencies)
+
+class CurrencyExchangeRate(models.Model):
+    """Currency exchange rates"""
+    base_currency = models.CharField(max_length=3)
+    target_currency = models.CharField(max_length=3)
+    exchange_rate = models.DecimalField(max_digits=10, decimal_places=6)
+    last_updated = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['base_currency', 'target_currency']
+    
+    def __str__(self):
+        return f"{self.base_currency}/{self.target_currency}: {self.exchange_rate}"    

@@ -1,0 +1,629 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Checkout - Bika{% endblock %}
+
+{% block extra_css %}
+<style>
+.checkout-container {
+    background: #f8f9fa;
+    min-height: 100vh;
+}
+
+.country-selector {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.payment-method-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.payment-method-card {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.payment-method-card:hover {
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.payment-method-card.selected {
+    border-color: #667eea;
+    background: #f8f9ff;
+}
+
+.payment-method-card.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #28a745;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.payment-icon {
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.payment-form {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 25px;
+    margin-top: 20px;
+}
+
+.phone-input-group {
+    position: relative;
+}
+
+.country-code {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-weight: 600;
+    color: #495057;
+}
+
+.phone-input {
+    padding-left: 70px;
+}
+
+.card-element {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.flag-icon {
+    width: 20px;
+    height: 15px;
+    margin-right: 8px;
+    border-radius: 2px;
+}
+
+.country-option {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+}
+
+.payment-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #28a745;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+}
+
+/* Color variants for different providers */
+.bg-mpesa { background: linear-gradient(135deg, #28a745, #20c997); }
+.bg-tigo { background: linear-gradient(135deg, #007bff, #0056b3); }
+.bg-airtel { background: linear-gradient(135deg, #e83e8c, #c2185b); }
+.bg-mtn { background: linear-gradient(135deg, #ffc107, #fd7e14); }
+.bg-visa { background: linear-gradient(135deg, #1a1f71, #f7a600); }
+.bg-mastercard { background: linear-gradient(135deg, #eb001b, #f79e1b); }
+.bg-paypal { background: linear-gradient(135deg, #003087, #009cde); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="checkout-container">
+    <div class="container py-5">
+        <div class="row">
+            <div class="col-lg-8">
+                <!-- Country Selection -->
+                <div class="country-selector">
+                    <h5 class="mb-3">Select Your Country</h5>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <div class="form-check country-option" onclick="selectCountry('TZ')">
+                                <input class="form-check-input" type="radio" name="country" id="countryTZ" 
+                                       {% if user_country == 'TZ' %}checked{% endif %}>
+                                <label class="form-check-label" for="countryTZ">
+                                    <img src="{% static 'flags/tz.svg' %}" alt="Tanzania" class="flag-icon">
+                                    Tanzania
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check country-option" onclick="selectCountry('RW')">
+                                <input class="form-check-input" type="radio" name="country" id="countryRW"
+                                       {% if user_country == 'RW' %}checked{% endif %}>
+                                <label class="form-check-label" for="countryRW">
+                                    <img src="{% static 'flags/rw.svg' %}" alt="Rwanda" class="flag-icon">
+                                    Rwanda
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check country-option" onclick="selectCountry('UG')">
+                                <input class="form-check-input" type="radio" name="country" id="countryUG"
+                                       {% if user_country == 'UG' %}checked{% endif %}>
+                                <label class="form-check-label" for="countryUG">
+                                    <img src="{% static 'flags/ug.svg' %}" alt="Uganda" class="flag-icon">
+                                    Uganda
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check country-option" onclick="selectCountry('KE')">
+                                <input class="form-check-input" type="radio" name="country" id="countryKE"
+                                       {% if user_country == 'KE' %}checked{% endif %}>
+                                <label class="form-check-label" for="countryKE">
+                                    <img src="{% static 'flags/ke.svg' %}" alt="Kenya" class="flag-icon">
+                                    Kenya
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Methods -->
+                <div class="payment-methods">
+                    <h4 class="mb-4">Choose Payment Method</h4>
+                    
+                    <div class="payment-method-grid" id="paymentMethodsGrid">
+                        {% for method in available_methods %}
+                        <div class="payment-method-card" 
+                             onclick="selectPaymentMethod('{{ method.value }}')"
+                             id="card{{ method.value|title }}">
+                            <div class="d-flex align-items-center">
+                                <div class="payment-icon text-{{ method.color }}">
+                                    <i class="{{ method.icon }}"></i>
+                                </div>
+                                <div class="ms-3 flex-grow-1">
+                                    <h6 class="mb-1">{{ method.name }}</h6>
+                                    <small class="text-muted">
+                                        {% if 'mpesa' in method.value %}
+                                        Send money to +255 798 780 022
+                                        {% elif 'tigo' in method.value %}
+                                        Send money to +255 789 123 456
+                                        {% elif 'airtel' in method.value %}
+                                        Send money to +255 788 987 654
+                                        {% elif 'mtn' in method.value %}
+                                        Send money to +250 798 780 022
+                                        {% else %}
+                                        Secure online payment
+                                        {% endif %}
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <!-- Payment Forms -->
+                            <div class="payment-form d-none" id="form{{ method.value|title }}">
+                                {% if 'mpesa' in method.value or 'tigo' in method.value or 'airtel' in method.value or 'mtn' in method.value %}
+                                <!-- Mobile Money Form -->
+                                <div class="mb-3">
+                                    <label class="form-label">Phone Number</label>
+                                    <div class="phone-input-group">
+                                        <span class="country-code" id="phonePrefix{{ method.value|title }}">+255</span>
+                                        <input type="tel" class="form-control phone-input" 
+                                               id="phone{{ method.value|title }}" 
+                                               placeholder="798780022" 
+                                               maxlength="9" 
+                                               pattern="[0-9]{9}">
+                                    </div>
+                                    <div class="form-text">Enter your {{ method.name }} registered number</div>
+                                </div>
+                                <button class="btn btn-{{ method.color }} w-100" 
+                                        onclick="initiateMobilePayment('{{ method.value }}')">
+                                    <i class="fas fa-paper-plane me-2"></i>Pay with {{ method.name }}
+                                </button>
+                                
+                                {% elif 'visa' in method.value or 'mastercard' in method.value or 'amex' in method.value %}
+                                <!-- Card Payment Form -->
+                                <div id="cardForm{{ method.value|title }}">
+                                    <div class="mb-3">
+                                        <label class="form-label">Card Information</label>
+                                        <div id="cardElement{{ method.value|title }}" class="card-element">
+                                            <!-- Stripe Elements will be inserted here -->
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-{{ method.color }} w-100" 
+                                            onclick="initiateCardPayment('{{ method.value }}')">
+                                        <i class="fas fa-lock me-2"></i>Pay Securely
+                                    </button>
+                                </div>
+                                
+                                {% elif 'paypal' in method.value %}
+                                <!-- PayPal Form -->
+                                <button class="btn btn-{{ method.color }} w-100" 
+                                        onclick="initiatePayPalPayment()">
+                                    <i class="fab fa-paypal me-2"></i>Pay with PayPal
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <!-- Order Summary -->
+                <div class="checkout-card">
+                    <div class="order-summary">
+                        <h4 class="mb-4">Order Summary</h4>
+                        
+                        {% for item in cart_items %}
+                        <div class="order-item">
+                            {% if item.product.images.first %}
+                            <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="order-item-image">
+                            {% else %}
+                            <div class="order-item-image bg-light d-flex align-items-center justify-content-center">
+                                <i class="fas fa-image text-muted"></i>
+                            </div>
+                            {% endif %}
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">{{ item.product.name }}</h6>
+                                <small>Qty: {{ item.quantity }} × ${{ item.product.price }}</small>
+                            </div>
+                            <div class="text-end">
+                                <strong>${{ item.total_price }}</strong>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        
+                        <div class="amount-breakdown">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Subtotal:</span>
+                                <span>${{ subtotal }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Tax (18%):</span>
+                                <span>${{ tax_amount }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3">
+                                <span>Shipping:</span>
+                                <span>${{ shipping_cost }}</span>
+                            </div>
+                            <hr style="border-color: rgba(255,255,255,0.3);">
+                            <div class="d-flex justify-content-between mb-0">
+                                <strong>Total Amount:</strong>
+                                <strong class="h5">${{ total_amount }}</strong>
+                            </div>
+                            <small class="text-muted d-block mt-2" id="currencyNote">
+                                Amount will be converted to your local currency
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Support Info -->
+                <div class="checkout-card mt-4">
+                    <div class="p-3">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="fas fa-headset text-primary me-3 fa-lg"></i>
+                            <div>
+                                <h6 class="mb-1">24/7 Support</h6>
+                                <small class="text-muted">Call: +255 798 780 022</small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-shield-alt text-success me-3 fa-lg"></i>
+                            <div>
+                                <h6 class="mb-1">Secure Payment</h6>
+                                <small class="text-muted">256-bit SSL encryption</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay d-none" id="loadingOverlay">
+    <div class="text-center">
+        <div class="spinner-border text-light mb-3" style="width: 3rem; height: 3rem;"></div>
+        <h4>Processing Payment...</h4>
+        <p id="loadingMessage">Please wait while we process your payment</p>
+    </div>
+</div>
+
+<!-- Payment Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-body text-center py-5">
+                <div class="success-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h3 class="text-success mb-3">Payment Successful!</h3>
+                <p class="mb-4">Thank you for your purchase. Your order has been confirmed.</p>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'bika:user_orders' %}" class="btn btn-primary">View Orders</a>
+                    <a href="{% url 'bika:home' %}" class="btn btn-outline-secondary">Continue Shopping</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Stripe.js for card payments -->
+<script src="https://js.stripe.com/v3/"></script>
+
+<script>
+// Configuration
+const stripe = Stripe('{{ STRIPE_PUBLISHABLE_KEY }}');
+let selectedMethod = '';
+let currentOrderId = null;
+let currentCountry = '{{ user_country }}';
+
+// Country configuration
+const countryConfig = {
+    'TZ': { prefix: '+255', currency: 'TZS', methods: {{ available_methods|safe }} },
+    'RW': { prefix: '+250', currency: 'RWF', methods: [] },
+    'UG': { prefix: '+256', currency: 'UGX', methods: [] },
+    'KE': { prefix: '+254', currency: 'KES', methods: [] }
+};
+
+function selectCountry(countryCode) {
+    currentCountry = countryCode;
+    const config = countryConfig[countryCode];
+    
+    // Update phone prefixes
+    document.querySelectorAll('[id^="phonePrefix"]').forEach(el => {
+        el.textContent = config.prefix;
+    });
+    
+    // Update currency note
+    document.getElementById('currencyNote').textContent = 
+        `Amount will be converted to ${config.currency}`;
+    
+    // Reload payment methods (you would fetch this from server in real implementation)
+    loadPaymentMethodsForCountry(countryCode);
+}
+
+function loadPaymentMethodsForCountry(countryCode) {
+    // In a real implementation, you would fetch available methods from the server
+    console.log(`Loading payment methods for ${countryCode}`);
+    // For now, we'll just show a loading state and keep the current methods
+}
+
+function selectPaymentMethod(method) {
+    selectedMethod = method;
+    
+    // Reset all cards
+    document.querySelectorAll('.payment-method-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Hide all forms
+    document.querySelectorAll('.payment-form').forEach(form => {
+        form.classList.add('d-none');
+    });
+    
+    // Select current card and show form
+    const card = document.getElementById('card' + method.charAt(0).toUpperCase() + method.slice(1));
+    const form = document.getElementById('form' + method.charAt(0).toUpperCase() + method.slice(1));
+    
+    if (card && form) {
+        card.classList.add('selected');
+        form.classList.remove('d-none');
+        
+        // Initialize Stripe Elements for card payments
+        if (method.includes('visa') || method.includes('mastercard') || method.includes('amex')) {
+            initializeStripeElements(method);
+        }
+    }
+}
+
+function initializeStripeElements(method) {
+    const elements = stripe.elements();
+    const cardElement = elements.create('card', {
+        style: {
+            base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                    color: '#aab7c4',
+                },
+            },
+        },
+    });
+    
+    const cardElementId = 'cardElement' + method.charAt(0).toUpperCase() + method.slice(1);
+    cardElement.mount('#' + cardElementId);
+}
+
+async function createOrder() {
+    try {
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('shipping_address', 'Default address');
+        formData.append('billing_address', 'Default address');
+        
+        const response = await fetch('{% url "bika:create_order" %}', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            return data;
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+async function initiateMobilePayment(method) {
+    const phoneInput = document.getElementById('phone' + method.charAt(0).toUpperCase() + method.slice(1));
+    const phoneNumber = phoneInput.value.trim();
+    const prefix = document.getElementById('phonePrefix' + method.charAt(0).toUpperCase() + method.slice(1)).textContent;
+    
+    if (!phoneNumber || !/^\d{9}$/.test(phoneNumber)) {
+        alert('Please enter a valid 9-digit phone number');
+        return;
+    }
+    
+    const fullPhoneNumber = prefix + phoneNumber;
+    
+    try {
+        showLoading('Initiating ' + method + ' payment...');
+        
+        const orderData = await createOrder();
+        currentOrderId = orderData.order_id;
+        
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('order_id', currentOrderId);
+        formData.append('payment_method', method);
+        formData.append('phone_number', fullPhoneNumber);
+        
+        const response = await fetch('{% url "bika:initiate_payment" %}', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showLoading('Waiting for payment confirmation...');
+            pollPaymentStatus(data.payment_id);
+        } else {
+            hideLoading();
+            alert('Payment failed: ' + data.message);
+        }
+    } catch (error) {
+        hideLoading();
+        alert('Error: ' + error.message);
+    }
+}
+
+async function initiateCardPayment(method) {
+    try {
+        showLoading('Processing card payment...');
+        
+        const orderData = await createOrder();
+        currentOrderId = orderData.order_id;
+        
+        // For card payments, you would tokenize the card with Stripe
+        // This is a simplified version
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('order_id', currentOrderId);
+        formData.append('payment_method', method);
+        formData.append('card_token', 'tok_visa'); // You would get this from Stripe
+        
+        const response = await fetch('{% url "bika:initiate_payment" %}', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showSuccess();
+        } else {
+            hideLoading();
+            alert('Payment failed: ' + data.message);
+        }
+    } catch (error) {
+        hideLoading();
+        alert('Error: ' + error.message);
+    }
+}
+
+function initiatePayPalPayment() {
+    alert('PayPal integration coming soon!');
+}
+
+// Utility functions
+function showLoading(message = 'Processing...') {
+    document.getElementById('loadingMessage').textContent = message;
+    document.getElementById('loadingOverlay').classList.remove('d-none');
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.add('d-none');
+}
+
+function showSuccess() {
+    hideLoading();
+    const modal = new bootstrap.Modal(document.getElementById('successModal'));
+    modal.show();
+}
+
+async function pollPaymentStatus(paymentId) {
+    let attempts = 0;
+    const maxAttempts = 30;
+    
+    const checkStatus = async () => {
+        attempts++;
+        
+        try {
+            const response = await fetch(`/payment/status/${paymentId}/`);
+            const data = await response.json();
+            
+            if (data.is_completed) {
+                showSuccess();
+                return;
+            }
+            
+            if (attempts >= maxAttempts) {
+                hideLoading();
+                alert('Payment timeout. Please check your phone and refresh the page.');
+                return;
+            }
+            
+            setTimeout(checkStatus, 5000);
+        } catch (error) {
+            console.error('Status check error:', error);
+            if (attempts < maxAttempts) {
+                setTimeout(checkStatus, 5000);
+            } else {
+                hideLoading();
+                alert('Error checking payment status.');
+            }
+        }
+    };
+    
+    checkStatus();
+}
+
+// Initialize default selection
+document.addEventListener('DOMContentLoaded', function() {
+    // Select first payment method by default
+    const firstMethod = document.querySelector('.payment-method-card');
+    if (firstMethod) {
+        const methodId = firstMethod.id.replace('card', '');
+        selectPaymentMethod(methodId.toLowerCase());
+    }
+});
+</script>
+{% endblock %}

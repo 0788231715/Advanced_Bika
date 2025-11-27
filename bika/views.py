@@ -1,3 +1,4 @@
+from asyncio.log import logger
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Count, Q, F
 from django.utils import timezone
@@ -21,7 +22,7 @@ import datetime
 
 # Import models
 from .models import (
-    Notification, ProductAlert, ProductDataset, RealTimeSensorData, SiteInfo, Service, StorageLocation, Testimonial, ContactMessage, FAQ,
+    Notification, Payment, ProductAlert, ProductDataset, RealTimeSensorData, SiteInfo, Service, StorageLocation, Testimonial, ContactMessage, FAQ,
     CustomUser, Product, ProductCategory, ProductImage, ProductReview,
     Wishlist, Cart, Order, OrderItem
 )
@@ -1491,3 +1492,350 @@ def handle_bulk_actions(request):
             
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)})
+    
+
+from .payment_gateways import AirtelAfricaGateway, PaymentGatewayFactory, StripeGateway
+import json
+
+@login_required
+def checkout(request):
+    """Enhanced checkout with multi-country payment options"""
+    cart_items = Cart.objects.filter(user=request.user).select_related('product')
+    
+    if not cart_items:
+        messages.error(request, "Your cart is empty!")
+        return redirect('bika:cart')
+    
+    # Calculate totals
+    subtotal = sum(item.total_price for item in cart_items)
+    tax_rate = 0.18
+    tax_amount = subtotal * tax_rate
+    shipping_cost = 5000
+    total_amount = subtotal + tax_amount + shipping_cost
+    
+    # Get user's country (you can get this from user profile or IP)
+    user_country = get_user_country(request)
+    
+    # Get available payment methods for user's country
+    available_methods = get_available_payment_methods(user_country)
+    
+    context = {
+        'cart_items': cart_items,
+        'subtotal': subtotal,
+        'tax_amount': tax_amount,
+        'shipping_cost': shipping_cost,
+        'total_amount': total_amount,
+        'available_methods': available_methods,
+        'user_country': user_country,
+    }
+    return render(request, 'bika/pages/checkout.html', context)
+
+def get_user_country(request):
+    """Get user's country from IP or profile"""
+    # You can implement IP geolocation here
+    # For now, return a default or get from user profile
+    return 'TZ'  # Default to Tanzania
+
+def get_available_payment_methods(country_code):
+    """Get available payment methods for country"""
+    country_methods = {
+        'TZ': [
+            {'value': 'mpesa', 'name': 'M-Pesa Tanzania', 'icon': 'fas fa-mobile-alt', 'color': 'success'},
+            {'value': 'tigo_tz', 'name': 'Tigo Pesa', 'icon': 'fas fa-sim-card', 'color': 'primary'},
+            {'value': 'airtel_tz', 'name': 'Airtel Money', 'icon': 'fas fa-wifi', 'color': 'red'},
+            {'value': 'visa', 'name': 'Visa Card', 'icon': 'fab fa-cc-visa', 'color': 'navy'},
+            {'value': 'mastercard', 'name': 'MasterCard', 'icon': 'fab fa-cc-mastercard', 'color': 'orange'},
+            {'value': 'paypal', 'name': 'PayPal', 'icon': 'fab fa-paypal', 'color': 'info'},
+        ],
+        'RW': [
+            {'value': 'mtn_rw', 'name': 'MTN Mobile Money', 'icon': 'fas fa-mobile-alt', 'color': 'yellow'},
+            {'value': 'airtel_rw', 'name': 'Airtel Money', 'icon': 'fas fa-wifi', 'color': 'red'},
+            {'value': 'visa', 'name': 'Visa Card', 'icon': 'fab fa-cc-visa', 'color': 'navy'},
+            {'value': 'mastercard', 'name': 'MasterCard', 'icon': 'fab fa-cc-mastercard', 'color': 'orange'},
+            {'value': 'paypal', 'name': 'PayPal', 'icon': 'fab fa-paypal', 'color': 'info'},
+        ],
+        'UG': [
+            {'value': 'mtn_ug', 'name': 'MTN Mobile Money', 'icon': 'fas fa-mobile-alt', 'color': 'yellow'},
+            {'value': 'airtel_ug', 'name': 'Airtel Money', 'icon': 'fas fa-wifi', 'color': 'red'},
+            {'value': 'visa', 'name': 'Visa Card', 'icon': 'fab fa-cc-visa', 'color': 'navy'},
+            {'value': 'mastercard', 'name': 'MasterCard', 'icon': 'fab fa-cc-mastercard', 'color': 'orange'},
+            {'value': 'paypal', 'name': 'PayPal', 'icon': 'fab fa-paypal', 'color': 'info'},
+        ],
+        'KE': [
+            {'value': 'mpesa_ke', 'name': 'M-Pesa Kenya', 'icon': 'fas fa-mobile-alt', 'color': 'success'},
+            {'value': 'visa', 'name': 'Visa Card', 'icon': 'fab fa-cc-visa', 'color': 'navy'},
+            {'value': 'mastercard', 'name': 'MasterCard', 'icon': 'fab fa-cc-mastercard', 'color': 'orange'},
+            {'value': 'paypal', 'name': 'PayPal', 'icon': 'fab fa-paypal', 'color': 'info'},
+        ],
+    }
+    
+    return country_methods.get(country_code, [
+        {'value': 'visa', 'name': 'Visa Card', 'icon': 'fab fa-cc-visa', 'color': 'navy'},
+        {'value': 'mastercard', 'name': 'MasterCard', 'icon': 'fab fa-cc-mastercard', 'color': 'orange'},
+        {'value': 'paypal', 'name': 'PayPal', 'icon': 'fab fa-paypal', 'color': 'info'},
+    ])
+
+@login_required
+def initiate_payment(request):
+    """Enhanced payment initiation with multi-provider support"""
+    if request.method == 'POST':
+        try:
+            order_id = request.POST.get('order_id')
+            payment_method = request.POST.get('payment_method')
+            phone_number = request.POST.get('phone_number', '')
+            card_token = request.POST.get('card_token', '')
+            
+            order = get_object_or_404(Order, id=order_id, user=request.user)
+            
+            # Create payment record
+            payment = Payment.objects.create(
+                order=order,
+                payment_method=payment_method,
+                amount=order.total_amount,
+                currency='TZS'  # You can make this dynamic based on country
+            )
+            
+            # Get payment gateway configuration
+            gateway_config = payment.get_payment_provider_config()
+            if not gateway_config:
+                return JsonResponse({'success': False, 'message': 'Payment method not available'})
+            
+            # Create gateway instance
+            gateway = PaymentGatewayFactory.create_gateway(payment_method, gateway_config)
+            if not gateway:
+                return JsonResponse({'success': False, 'message': 'Payment gateway error'})
+            
+            # Process payment based on method
+            if payment_method in ['mpesa', 'tigo_tz', 'airtel_tz', 'mtn_rw', 'airtel_rw', 'mtn_ug', 'airtel_ug', 'mpesa_ke']:
+                # Mobile Money payment
+                if not phone_number:
+                    return JsonResponse({'success': False, 'message': 'Phone number required'})
+                
+                result = process_mobile_money_payment(gateway, payment_method, phone_number, order.total_amount, order.order_number)
+                
+            elif payment_method in ['visa', 'mastercard', 'amex']:
+                # Card payment
+                if not card_token:
+                    return JsonResponse({'success': False, 'message': 'Card token required'})
+                
+                result = process_card_payment(gateway, card_token, order.total_amount, 'TZS', request.user.email)
+                
+            elif payment_method == 'paypal':
+                # PayPal payment
+                return_url = request.build_absolute_uri(f'/payment/success/{payment.id}/')
+                cancel_url = request.build_absolute_uri(f'/payment/failed/{payment.id}/')
+                result = gateway.create_order(order.total_amount, 'USD', return_url, cancel_url)
+                
+            else:
+                return JsonResponse({'success': False, 'message': 'Payment method not supported'})
+            
+            if result['success']:
+                # Update payment record with gateway response
+                payment.transaction_id = result.get('transaction_id', '')
+                payment.mobile_money_phone = phone_number
+                payment.mobile_money_provider = payment_method
+                payment.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'payment_id': payment.id,
+                    'message': result.get('message', 'Payment initiated successfully'),
+                    'approval_url': result.get('approval_url'),  # For PayPal
+                    'client_secret': result.get('client_secret'),  # For Stripe
+                })
+            else:
+                payment.status = 'failed'
+                payment.save()
+                return JsonResponse({'success': False, 'message': result['message']})
+                
+        except Exception as e:
+            logger.error(f"Payment initiation error: {str(e)}")
+            return JsonResponse({'success': False, 'message': str(e)})
+    
+    return JsonResponse({'success': False, 'message': 'Invalid request'})
+
+def process_mobile_money_payment(gateway, method, phone_number, amount, reference):
+    """Process mobile money payment"""
+    country_map = {
+        'mpesa': 'TZ', 'tigo_tz': 'TZ', 'airtel_tz': 'TZ',
+        'mtn_rw': 'RW', 'airtel_rw': 'RW',
+        'mtn_ug': 'UG', 'airtel_ug': 'UG',
+        'mpesa_ke': 'KE',
+    }
+    
+    country = country_map.get(method, 'TZ')
+    
+    if isinstance(gateway, AirtelAfricaGateway):
+        return gateway.initiate_payment(phone_number, amount, reference, country)
+    else:
+        return gateway.initiate_payment(phone_number, amount, reference)
+
+def process_card_payment(gateway, card_token, amount, currency, customer_email):
+    """Process card payment"""
+    if isinstance(gateway, StripeGateway):
+        return gateway.create_payment_intent(amount, currency, card_token, customer_email)
+    else:
+        return {'success': False, 'message': 'Card payments not configured'}
+
+@csrf_exempt
+def stripe_webhook(request):
+    """Handle Stripe webhooks"""
+    if request.method == 'POST':
+        try:
+            payload = request.body
+            sig_header = request.META['HTTP_STRIPE_SIGNATURE']
+            
+            # Verify webhook signature
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            )
+            
+            if event['type'] == 'payment_intent.succeeded':
+                payment_intent = event['data']['object']
+                # Update payment status
+                payment = Payment.objects.filter(transaction_id=payment_intent['id']).first()
+                if payment:
+                    payment.status = 'completed'
+                    payment.paid_at = timezone.now()
+                    payment.save()
+                    
+                    payment.order.status = 'confirmed'
+                    payment.order.save()
+            
+            return JsonResponse({'success': True})
+            
+        except Exception as e:
+            logger.error(f"Stripe webhook error: {str(e)}")
+            return JsonResponse({'success': False}, status=400)
+    
+    return JsonResponse({'success': False}, status=405)    
+
+@login_required
+def track_my_products(request):
+    """Track vendor's products with enhanced analytics"""
+    if not request.user.is_vendor() and not request.user.is_staff:
+        messages.error(request, "Access denied.")
+        return redirect('bika:home')
+    
+    # Get vendor's products
+    if request.user.is_staff:
+        products = Product.objects.all()
+        alerts = ProductAlert.objects.filter(is_resolved=False)
+    else:
+        products = Product.objects.filter(vendor=request.user)
+        alerts = ProductAlert.objects.filter(product__vendor=request.user, is_resolved=False)
+    
+    # Apply filters
+    query = request.GET.get('q', '')
+    stock_filter = request.GET.get('stock', '')
+    status_filter = request.GET.get('status', '')
+    sort_filter = request.GET.get('sort', 'updated')
+    
+    if query:
+        products = products.filter(
+            Q(name__icontains=query) | 
+            Q(sku__icontains=query) |
+            Q(category__name__icontains=query)
+        )
+    
+    if status_filter:
+        products = products.filter(status=status_filter)
+    
+    if stock_filter == 'in_stock':
+        products = products.filter(stock_quantity__gt=0)
+    elif stock_filter == 'low_stock':
+        products = products.filter(
+            stock_quantity__gt=0, 
+            stock_quantity__lte=F('low_stock_threshold')
+        )
+    elif stock_filter == 'out_of_stock':
+        products = products.filter(stock_quantity=0)
+    
+    # Apply sorting
+    if sort_filter == 'stock':
+        products = products.order_by('stock_quantity')
+    elif sort_filter == 'name':
+        products = products.order_by('name')
+    else:  # updated
+        products = products.order_by('-updated_at')
+    
+    # Calculate statistics
+    total_products = products.count()
+    low_stock_count = products.filter(
+        stock_quantity__gt=0, 
+        stock_quantity__lte=F('low_stock_threshold')
+    ).count()
+    out_of_stock_count = products.filter(stock_quantity=0).count()
+    active_alerts_count = alerts.count()
+    
+    # Add sensor data and alert status to products
+    for product in products:
+        # Check for critical alerts
+        product.has_critical_alerts = alerts.filter(
+            product=product, 
+            severity__in=['critical', 'high']
+        ).exists()
+        
+        # Mock sensor data (in real implementation, fetch from RealTimeSensorData)
+        product.sensor_data = [
+            {'sensor_type': 'temperature', 'value': 22.5, 'unit': '°C', 'is_normal': True, 'is_warning': False},
+            {'sensor_type': 'humidity', 'value': 45, 'unit': '%', 'is_normal': True, 'is_warning': False},
+        ]
+    
+    context = {
+        'products': products,
+        'alerts': alerts[:10],  # Show latest 10 alerts
+        'total_products': total_products,
+        'low_stock_count': low_stock_count,
+        'out_of_stock_count': out_of_stock_count,
+        'active_alerts_count': active_alerts_count,
+        'query': query,
+        'stock_filter': stock_filter,
+        'status_filter': status_filter,
+        'sort_filter': sort_filter,
+    }
+    return render(request, 'bika/pages/vendor/track_products.html', context)
+
+@login_required
+def product_analytics_api(request, product_id):
+    """API endpoint for product analytics"""
+    if request.user.is_staff:
+        product = get_object_or_404(Product, id=product_id)
+    else:
+        product = get_object_or_404(Product, id=product_id, vendor=request.user)
+    
+    # Mock analytics data - in real implementation, calculate from actual data
+    analytics_data = {
+        'product_name': product.name,
+        'total_sales': 150,  # Calculate from OrderItems
+        'total_revenue': float(product.price * 150),
+        'current_stock': product.stock_quantity,
+        'stockout_count': 3,  # Calculate from history
+        'views_count': product.views_count,
+        'wishlist_count': Wishlist.objects.filter(product=product).count(),
+        'review_count': ProductReview.objects.filter(product=product).count(),
+    }
+    
+    return JsonResponse(analytics_data)
+
+@login_required
+def resolve_alert(request, alert_id):
+    """Resolve a product alert"""
+    if request.method == 'POST':
+        try:
+            if request.user.is_staff:
+                alert = get_object_or_404(ProductAlert, id=alert_id)
+            else:
+                alert = get_object_or_404(ProductAlert, id=alert_id, product__vendor=request.user)
+            
+            alert.is_resolved = True
+            alert.resolved_at = timezone.now()
+            alert.resolved_by = request.user
+            alert.save()
+            
+            return JsonResponse({'success': True, 'message': 'Alert resolved successfully'})
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)})
+    
+    return JsonResponse({'success': False, 'message': 'Invalid request'})

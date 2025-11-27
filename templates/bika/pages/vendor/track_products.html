@@ -1,0 +1,961 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Track Products - Bika Vendor{% endblock %}
+
+{% block extra_css %}
+<style>
+.tracking-hero {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 60px 0 30px;
+}
+
+.tracking-stats {
+    margin-top: -30px;
+    position: relative;
+    z-index: 2;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.08);
+    border: none;
+    text-align: center;
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.stat-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 15px;
+    font-size: 1.5rem;
+}
+
+.stat-icon.total {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.stat-icon.low-stock {
+    background: linear-gradient(135deg, #ffc107, #fd7e14);
+    color: white;
+}
+
+.stat-icon.out-of-stock {
+    background: linear-gradient(135deg, #dc3545, #e83e8c);
+    color: white;
+}
+
+.stat-icon.alerts {
+    background: linear-gradient(135deg, #17a2b8, #20c997);
+    color: white;
+}
+
+.stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.product-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.08);
+    border: none;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    height: 100%;
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+}
+
+.product-image {
+    height: 200px;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.product-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.product-card:hover .product-image img {
+    transform: scale(1.05);
+}
+
+.product-badge {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    z-index: 2;
+}
+
+.product-info {
+    padding: 20px;
+}
+
+.product-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+
+.product-category {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-bottom: 10px;
+}
+
+.product-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.product-price {
+    font-weight: 700;
+    color: #2c3e50;
+    font-size: 1.2rem;
+}
+
+.stock-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.stock-in { color: #28a745; }
+.stock-low { color: #ffc107; }
+.stock-out { color: #dc3545; }
+
+.progress {
+    height: 8px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+.progress-bar {
+    border-radius: 10px;
+}
+
+.alert-badge {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    z-index: 2;
+}
+
+.sensor-data {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.sensor-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.sensor-item:last-child {
+    border-bottom: none;
+}
+
+.sensor-value {
+    font-weight: 600;
+}
+
+.sensor-normal { color: #28a745; }
+.sensor-warning { color: #ffc107; }
+.sensor-critical { color: #dc3545; }
+
+.quick-actions {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 25px;
+}
+
+.filter-section {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.search-box {
+    position: relative;
+}
+
+.search-box input {
+    padding-left: 45px;
+    border-radius: 25px;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.search-box input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.search-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6c757d;
+    z-index: 3;
+}
+
+.alerts-section {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.08);
+    padding: 25px;
+    margin-bottom: 30px;
+}
+
+.alert-item {
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    border-left: 4px solid;
+    background: #f8f9fa;
+}
+
+.alert-item:last-child {
+    margin-bottom: 0;
+}
+
+.alert-critical {
+    border-left-color: #dc3545;
+    background: #f8d7da;
+}
+
+.alert-warning {
+    border-left-color: #ffc107;
+    background: #fff3cd;
+}
+
+.alert-info {
+    border-left-color: #17a2b8;
+    background: #d1ecf1;
+}
+
+.alert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.alert-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 5px;
+}
+
+.alert-time {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.alert-message {
+    font-size: 0.9rem;
+    color: #495057;
+    margin-bottom: 10px;
+}
+
+.alert-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    color: #6c757d;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.empty-state h3 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+}
+
+.empty-state p {
+    color: #6c757d;
+    max-width: 500px;
+    margin: 0 auto 30px;
+    line-height: 1.6;
+}
+
+.real-time-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    color: #28a745;
+    background: #d4edda;
+    padding: 4px 8px;
+    border-radius: 12px;
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+@media (max-width: 768px) {
+    .tracking-hero h1 {
+        font-size: 2rem;
+    }
+    
+    .stat-number {
+        font-size: 2rem;
+    }
+    
+    .product-image {
+        height: 150px;
+    }
+    
+    .alert-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+}
+
+/* Status indicators */
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.status-online { background: #28a745; }
+.status-offline { background: #dc3545; }
+.status-warning { background: #ffc107; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="tracking-hero">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1 class="mb-3">Product Tracking</h1>
+                <p class="lead mb-4">Monitor your products in real-time with AI-powered analytics and alerts</p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <span class="real-time-indicator">
+                    <span class="status-dot status-online pulse"></span>
+                    Live Tracking Active
+                </span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Statistics Cards -->
+<section class="tracking-stats">
+    <div class="container">
+        <div class="row g-4">
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-icon total">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <div class="stat-number">{{ total_products }}</div>
+                    <div class="stat-label">Total Products</div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-icon low-stock">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-number">{{ low_stock_count }}</div>
+                    <div class="stat-label">Low Stock</div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-icon out-of-stock">
+                        <i class="fas fa-times-circle"></i>
+                    </div>
+                    <div class="stat-number">{{ out_of_stock_count }}</div>
+                    <div class="stat-label">Out of Stock</div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card">
+                    <div class="stat-icon alerts">
+                        <i class="fas fa-bell"></i>
+                    </div>
+                    <div class="stat-number">{{ active_alerts_count }}</div>
+                    <div class="stat-label">Active Alerts</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Main Content -->
+<section class="py-5">
+    <div class="container">
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h5 class="mb-2">Quick Actions</h5>
+                    <p class="text-muted mb-0">Manage your product tracking and monitoring</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <div class="btn-group">
+                        <a href="{% url 'bika:vendor_product_list' %}" class="btn btn-primary">
+                            <i class="fas fa-box me-2"></i>Manage Products
+                        </a>
+                        <a href="{% url 'bika:vendor_dashboard' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-section">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="search-box">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" class="form-control" placeholder="Search products..." id="searchInput" value="{{ query }}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="stockFilter">
+                        <option value="">All Stock Levels</option>
+                        <option value="in_stock" {% if stock_filter == 'in_stock' %}selected{% endif %}>In Stock</option>
+                        <option value="low_stock" {% if stock_filter == 'low_stock' %}selected{% endif %}>Low Stock</option>
+                        <option value="out_of_stock" {% if stock_filter == 'out_of_stock' %}selected{% endif %}>Out of Stock</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="statusFilter">
+                        <option value="">All Status</option>
+                        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="sortFilter">
+                        <option value="updated" {% if sort_filter == 'updated' %}selected{% endif %}>Last Updated</option>
+                        <option value="stock" {% if sort_filter == 'stock' %}selected{% endif %}>Stock Level</option>
+                        <option value="name" {% if sort_filter == 'name' %}selected{% endif %}>Name</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Alerts -->
+        {% if alerts %}
+        <div class="alerts-section">
+            <h4 class="mb-4">
+                <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                Active Alerts
+            </h4>
+            
+            {% for alert in alerts %}
+            <div class="alert-item {% if alert.severity == 'critical' %}alert-critical{% elif alert.severity == 'high' %}alert-warning{% else %}alert-info{% endif %}">
+                <div class="alert-header">
+                    <div>
+                        <div class="alert-title">
+                            <i class="fas fa-{% if alert.alert_type == 'stock_low' %}box{% elif alert.alert_type == 'temperature_anomaly' %}thermometer-half{% else %}exclamation-triangle{% endif %} me-2"></i>
+                            {{ alert.get_alert_type_display }}
+                        </div>
+                        <div class="alert-time">
+                            <i class="far fa-clock me-1"></i>
+                            {{ alert.created_at|timesince }} ago
+                        </div>
+                    </div>
+                    <span class="badge bg-{% if alert.severity == 'critical' %}danger{% elif alert.severity == 'high' %}warning{% else %}info{% endif %}">
+                        {{ alert.get_severity_display }}
+                    </span>
+                </div>
+                <div class="alert-message">
+                    <strong>{{ alert.product.name }}</strong> - {{ alert.message }}
+                </div>
+                <div class="alert-actions">
+                    <a href="{% url 'bika:vendor_edit_product' alert.product.id %}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-edit me-1"></i>Manage
+                    </a>
+                    {% if user.is_staff %}
+                    <button class="btn btn-sm btn-outline-success" onclick="resolveAlert({{ alert.id }})">
+                        <i class="fas fa-check me-1"></i>Resolve
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Products Grid -->
+        {% if products %}
+        <div class="row">
+            {% for product in products %}
+            <div class="col-xl-4 col-lg-6 mb-4">
+                <div class="product-card">
+                    <!-- Product Image -->
+                    <div class="product-image position-relative">
+                        {% if product.images.first %}
+                        <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}">
+                        {% else %}
+                        <div class="w-100 h-100 d-flex align-items-center justify-content-center bg-light">
+                            <i class="fas fa-image fa-3x text-muted"></i>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Status Badges -->
+                        <div class="product-badge">
+                            {% if product.is_featured %}
+                            <span class="badge bg-warning mb-2">Featured</span>
+                            {% endif %}
+                            {% if product.discount_percentage > 0 %}
+                            <span class="badge bg-danger">{{ product.discount_percentage }}% OFF</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Alert Badge -->
+                        {% if product.has_critical_alerts %}
+                        <div class="alert-badge">
+                            <span class="badge bg-danger">
+                                <i class="fas fa-exclamation-triangle"></i> Alert
+                            </span>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Product Info -->
+                    <div class="product-info">
+                        <h5 class="product-name">{{ product.name }}</h5>
+                        <div class="product-category">{{ product.category.name }}</div>
+                        
+                        <!-- Stock Information -->
+                        <div class="product-meta">
+                            <div class="product-price">${{ product.price }}</div>
+                            <div class="stock-indicator {% if product.is_in_stock %}{% if product.is_low_stock %}stock-low{% else %}stock-in{% endif %}{% else %}stock-out{% endif %}">
+                                <i class="fas fa-{% if product.is_in_stock %}{% if product.is_low_stock %}exclamation-triangle{% else %}check-circle{% endif %}{% else %}times-circle{% endif %}"></i>
+                                {% if product.is_in_stock %}
+                                    {% if product.is_low_stock %}
+                                    Low Stock ({{ product.stock_quantity }})
+                                    {% else %}
+                                    In Stock ({{ product.stock_quantity }})
+                                    {% endif %}
+                                {% else %}
+                                Out of Stock
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Stock Progress Bar -->
+                        {% if product.track_inventory %}
+                        <div class="progress">
+                            {% with max_stock=product.low_stock_threshold|add:10 %}
+                                {% with stock_percentage=product.stock_quantity|floatformat:0 %}
+                                    <div class="progress-bar 
+                                        {% if product.is_low_stock %}bg-warning
+                                        {% elif product.is_in_stock %}bg-success
+                                        {% else %}bg-danger{% endif %}" 
+                                        style="width: {% if product.stock_quantity > 0 %}{% widthratio product.stock_quantity max_stock 100 %}%{% else %}0%{% endif %}">
+                                    </div>
+                                {% endwith %}
+                            {% endwith %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Sensor Data (if available) -->
+                        {% if product.sensor_data %}
+                        <div class="sensor-data">
+                            <h6 class="mb-3">
+                                <i class="fas fa-microchip me-2"></i>
+                                Real-time Monitoring
+                            </h6>
+                            {% for sensor in product.sensor_data %}
+                            <div class="sensor-item">
+                                <span>{{ sensor.sensor_type|title }}:</span>
+                                <span class="sensor-value 
+                                    {% if sensor.is_normal %}sensor-normal
+                                    {% elif sensor.is_warning %}sensor-warning
+                                    {% else %}sensor-critical{% endif %}">
+                                    {{ sensor.value }}{{ sensor.unit }}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Product Actions -->
+                        <div class="d-grid gap-2 mt-3">
+                            <a href="{% url 'bika:vendor_edit_product' product.id %}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-edit me-1"></i>Manage Stock
+                            </a>
+                            <div class="btn-group">
+                                <a href="{% url 'bika:product_detail' product.slug %}" class="btn btn-outline-secondary btn-sm" target="_blank">
+                                    <i class="fas fa-eye me-1"></i>View
+                                </a>
+                                <button class="btn btn-outline-info btn-sm" onclick="showProductAnalytics({{ product.id }})">
+                                    <i class="fas fa-chart-line me-1"></i>Analytics
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <!-- Empty State -->
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <i class="fas fa-search"></i>
+            </div>
+            <h3>No Products Found</h3>
+            
+            {% if query or stock_filter or status_filter %}
+            <p>We couldn't find any products matching your current filters. Try adjusting your search criteria or clear all filters to see all products.</p>
+            <div class="mt-4">
+                <a href="{% url 'bika:track_my_products' %}" class="btn btn-outline-primary me-3">
+                    <i class="fas fa-times me-2"></i>Clear Filters
+                </a>
+                <a href="{% url 'bika:vendor_add_product' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Add New Product
+                </a>
+            </div>
+            {% else %}
+            <p>You haven't added any products yet. Start by adding your first product to track its performance and inventory.</p>
+            <div class="mt-4">
+                <a href="{% url 'bika:vendor_add_product' %}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-plus me-2"></i>Add Your First Product
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Real-time Updates Section -->
+        <div class="row mt-5">
+            <div class="col-12">
+                <div class="alerts-section">
+                    <h4 class="mb-4">
+                        <i class="fas fa-sync-alt text-primary me-2"></i>
+                        Real-time Updates
+                    </h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="me-3">
+                                    <i class="fas fa-database fa-2x text-primary"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">AI Monitoring</h6>
+                                    <p class="text-muted mb-0">Continuous product quality analysis</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="me-3">
+                                    <i class="fas fa-bell fa-2x text-warning"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">Instant Alerts</h6>
+                                    <p class="text-muted mb-0">Get notified of issues immediately</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center mt-3">
+                        <button class="btn btn-outline-primary" onclick="refreshData()">
+                            <i class="fas fa-sync-alt me-2"></i>Refresh Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Analytics Modal -->
+<div class="modal fade" id="analyticsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="analyticsModalTitle">Product Analytics</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="analyticsModalBody">
+                <!-- Analytics content will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Filter functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const stockFilter = document.getElementById('stockFilter');
+    const statusFilter = document.getElementById('statusFilter');
+    const sortFilter = document.getElementById('sortFilter');
+    
+    let filterTimeout;
+    
+    function applyFilters() {
+        const query = searchInput.value.trim();
+        const stock = stockFilter.value;
+        const status = statusFilter.value;
+        const sort = sortFilter.value;
+        
+        let url = '{% url "bika:track_my_products" %}?';
+        if (query) url += `q=${encodeURIComponent(query)}&`;
+        if (stock) url += `stock=${stock}&`;
+        if (status) url += `status=${status}&`;
+        if (sort) url += `sort=${sort}&`;
+        
+        window.location.href = url.replace(/&$/, '');
+    }
+    
+    // Search with debounce
+    searchInput.addEventListener('input', function() {
+        clearTimeout(filterTimeout);
+        filterTimeout = setTimeout(applyFilters, 500);
+    });
+    
+    // Immediate filter on select change
+    [stockFilter, statusFilter, sortFilter].forEach(filter => {
+        filter.addEventListener('change', applyFilters);
+    });
+});
+
+// Real-time data refresh
+function refreshData() {
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Refreshing...';
+    btn.disabled = true;
+    
+    // Simulate API call - in real implementation, this would fetch fresh data
+    setTimeout(() => {
+        window.location.reload();
+    }, 1000);
+}
+
+// Alert resolution
+function resolveAlert(alertId) {
+    if (!confirm('Mark this alert as resolved?')) return;
+    
+    fetch(`/alerts/${alertId}/resolve/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Alert resolved successfully', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showToast('Failed to resolve alert', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error resolving alert:', error);
+        showToast('Error resolving alert', 'error');
+    });
+}
+
+// Product analytics
+function showProductAnalytics(productId) {
+    const modal = new bootstrap.Modal(document.getElementById('analyticsModal'));
+    const modalTitle = document.getElementById('analyticsModalTitle');
+    const modalBody = document.getElementById('analyticsModalBody');
+    
+    // Show loading
+    modalTitle.textContent = 'Loading Analytics...';
+    modalBody.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary mb-3"></div>
+            <p>Loading product analytics...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Fetch analytics data
+    fetch(`/api/products/${productId}/analytics/`)
+        .then(response => response.json())
+        .then(data => {
+            modalTitle.textContent = `Analytics: ${data.product_name}`;
+            modalBody.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Sales Performance</h6>
+                                <div class="d-flex justify-content-between">
+                                    <span>Total Sales:</span>
+                                    <strong>${data.total_sales || 0}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Revenue:</span>
+                                    <strong>$${data.total_revenue || 0}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Inventory Health</h6>
+                                <div class="d-flex justify-content-between">
+                                    <span>Current Stock:</span>
+                                    <strong>${data.current_stock || 0}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Stockouts:</span>
+                                    <strong>${data.stockout_count || 0}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">Customer Engagement</h6>
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="h4 text-primary">${data.views_count || 0}</div>
+                                <small>Views</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h4 text-success">${data.wishlist_count || 0}</div>
+                                <small>Wishlists</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h4 text-info">${data.review_count || 0}</div>
+                                <small>Reviews</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            modalBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Failed to load analytics data. Please try again.
+                </div>
+            `;
+        });
+}
+
+// Toast notification function
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type} border-0`;
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    let toastContainer = document.querySelector('.toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(toastContainer);
+    }
+    
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+    });
+}
+
+// Real-time updates simulation
+function startRealTimeUpdates() {
+    // Simulate real-time updates every 30 seconds
+    setInterval(() => {
+        // In a real implementation, this would connect to WebSockets
+        // or make API calls to check for updates
+        console.log('Checking for real-time updates...');
+    }, 30000);
+}
+
+// Initialize real-time updates
+document.addEventListener('DOMContentLoaded', startRealTimeUpdates);
+</script>
+{% endblock %}

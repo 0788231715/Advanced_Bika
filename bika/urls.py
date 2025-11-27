@@ -107,6 +107,9 @@ urlpatterns = [
     path('review/add/<int:product_id>/', views.add_review, name='add_review'),
     
     path('vendor/products/', views.vendor_product_list, name='vendor_product_list'),
+    # Analytics API
+    path('api/products/<int:product_id>/analytics/', views.product_analytics_api, name='product_analytics_api'),
+    path('alerts/<int:alert_id>/resolve/', views.resolve_alert, name='resolve_alert'),
     # AJAX/API endpoints
     path('newsletter/subscribe/', views.newsletter_subscribe, name='newsletter_subscribe'),
 ]
