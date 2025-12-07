@@ -1,11 +1,16 @@
+# bika/models.py - ALL DJANGO MODELS IN ONE FILE
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import MinValueValidator, MaxValueValidator
+import random
+import string
 
-# Custom User Model
+# ==================== USER MODELS ====================
+
 class CustomUser(AbstractUser):
+    """Custom user model with different user types"""
     USER_TYPE_CHOICES = [
         ('customer', 'Customer'),
         ('vendor', 'Vendor'),
@@ -38,8 +43,10 @@ class CustomUser(AbstractUser):
     def is_customer(self):
         return self.user_type == 'customer'
 
-# Product Category Model
+# ==================== CORE MODELS ====================
+
 class ProductCategory(models.Model):
+    """Product category model"""
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
@@ -58,8 +65,8 @@ class ProductCategory(models.Model):
     def get_absolute_url(self):
         return reverse('bika:products_by_category', kwargs={'category_slug': self.slug})
 
-# Product Model with Detailed Information
 class Product(models.Model):
+    """Main product model"""
     STATUS_CHOICES = [
         ('draft', 'Draft'),
         ('active', 'Active'),
@@ -173,8 +180,8 @@ class Product(models.Model):
             status='active'
         ).exclude(id=self.id)[:limit]
 
-# Product Image Model
 class ProductImage(models.Model):
+    """Product images model"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
     image = models.ImageField(upload_to='products/')
     alt_text = models.CharField(max_length=200, blank=True)
@@ -193,8 +200,8 @@ class ProductImage(models.Model):
             ProductImage.objects.filter(product=self.product, is_primary=True).update(is_primary=False)
         super().save(*args, **kwargs)
 
-# Product Review Model
 class ProductReview(models.Model):
+    """Product reviews model"""
     RATING_CHOICES = [
         (1, '1 Star'),
         (2, '2 Stars'),
@@ -216,155 +223,12 @@ class ProductReview(models.Model):
     
     class Meta:
         ordering = ['-created_at']
-        unique_together = ['product', 'user']  # One review per user per product
+        unique_together = ['product', 'user']
     
     def __str__(self):
         return f"Review by {self.user.username} for {self.product.name}"
 
-# Site Information Model
-class SiteInfo(models.Model):
-    """Store site-wide information"""
-    name = models.CharField(max_length=200, default="Bika")
-    tagline = models.CharField(max_length=300, blank=True)
-    description = models.TextField(blank=True)
-    email = models.EmailField(default="contact@bika.com")
-    phone = models.CharField(max_length=20, blank=True)
-    address = models.TextField(blank=True)
-    logo = models.ImageField(upload_to='site/logo/', blank=True, null=True)
-    favicon = models.ImageField(upload_to='site/favicon/', blank=True, null=True)
-    
-    # Social Media
-    facebook_url = models.URLField(blank=True)
-    twitter_url = models.URLField(blank=True)
-    instagram_url = models.URLField(blank=True)
-    linkedin_url = models.URLField(blank=True)
-    
-    # SEO
-    meta_title = models.CharField(max_length=200, blank=True)
-    meta_description = models.TextField(blank=True)
-    
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        verbose_name = "Site Information"
-        verbose_name_plural = "Site Information"
-    
-    def __str__(self):
-        return self.name
-    
-    def save(self, *args, **kwargs):
-        # Ensure only one instance exists
-        if not self.pk and SiteInfo.objects.exists():
-            # Update the existing instance
-            existing = SiteInfo.objects.first()
-            existing.name = self.name
-            existing.tagline = self.tagline
-            existing.description = self.description
-            existing.email = self.email
-            existing.phone = self.phone
-            existing.address = self.address
-            if self.logo:
-                existing.logo = self.logo
-            if self.favicon:
-                existing.favicon = self.favicon
-            existing.facebook_url = self.facebook_url
-            existing.twitter_url = self.twitter_url
-            existing.instagram_url = self.instagram_url
-            existing.linkedin_url = self.linkedin_url
-            existing.meta_title = self.meta_title
-            existing.meta_description = self.meta_description
-            existing.save()
-            return
-        super().save(*args, **kwargs)
-
-# Service Model
-class Service(models.Model):
-    """Services offered by Bika"""
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
-    description = models.TextField()
-    icon = models.CharField(max_length=100, help_text="Font Awesome icon class")
-    image = models.ImageField(upload_to='services/', blank=True, null=True)
-    display_order = models.IntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['display_order', 'name']
-    
-    def __str__(self):
-        return self.name
-    
-    def get_absolute_url(self):
-        return reverse('bika:service_detail', kwargs={'slug': self.slug})
-
-# Testimonial Model
-class Testimonial(models.Model):
-    """Customer testimonials"""
-    name = models.CharField(max_length=200)
-    position = models.CharField(max_length=200, blank=True)
-    company = models.CharField(max_length=200, blank=True)
-    content = models.TextField()
-    image = models.ImageField(upload_to='testimonials/', blank=True, null=True)
-    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)], default=5)
-    is_featured = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-is_featured', '-created_at']
-    
-    def __str__(self):
-        return f"Testimonial from {self.name}"
-
-# Contact Message Model
-class ContactMessage(models.Model):
-    """Contact form messages"""
-    STATUS_CHOICES = [
-        ('new', 'New'),
-        ('read', 'Read'),
-        ('replied', 'Replied'),
-        ('closed', 'Closed'),
-    ]
-    
-    name = models.CharField(max_length=200)
-    email = models.EmailField()
-    phone = models.CharField(max_length=20, blank=True)
-    subject = models.CharField(max_length=200)
-    message = models.TextField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='new')
-    ip_address = models.GenericIPAddressField(blank=True, null=True)
-    submitted_at = models.DateTimeField(auto_now_add=True)
-    replied_at = models.DateTimeField(blank=True, null=True)
-    
-    class Meta:
-        ordering = ['-submitted_at']
-    
-    def __str__(self):
-        return f"{self.name} - {self.subject}"
-    
-    def mark_as_replied(self):
-        self.status = 'replied'
-        self.replied_at = timezone.now()
-        self.save()
-
-# FAQ Model
-class FAQ(models.Model):
-    """Frequently Asked Questions"""
-    question = models.CharField(max_length=300)
-    answer = models.TextField()
-    display_order = models.IntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['display_order', '-created_at']
-        verbose_name = "FAQ"
-        verbose_name_plural = "FAQs"
-    
-    def __str__(self):
-        return self.question
+# ==================== E-COMMERCE MODELS ====================
 
 class Wishlist(models.Model):
     """User wishlist model"""
@@ -396,8 +260,12 @@ class Cart(models.Model):
     
     @property
     def total_price(self):
-        return self.product.price * self.quantity
-
+        from decimal import Decimal
+        # Ensure both are Decimal
+        price = Decimal(str(self.product.price))
+        quantity = Decimal(str(self.quantity))
+        return price * quantity
+    
 class Order(models.Model):
     """Order model"""
     STATUS_CHOICES = [
@@ -425,9 +293,6 @@ class Order(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.order_number:
-            # Generate order number when saving for the first time
-            import random
-            import string
             random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
             self.order_number = f"ORD{timezone.now().strftime('%Y%m%d')}{random_str}"
         super().save(*args, **kwargs)
@@ -446,7 +311,124 @@ class OrderItem(models.Model):
     def total_price(self):
         return self.price * self.quantity
 
-# AI and Storage Models
+# ==================== FRUIT MONITORING MODELS ====================
+
+class FruitType(models.Model):
+    """Different types of fruits"""
+    name = models.CharField(max_length=100, unique=True)
+    scientific_name = models.CharField(max_length=200, blank=True)
+    image = models.ImageField(upload_to='fruits/', blank=True, null=True)
+    description = models.TextField(blank=True)
+    
+    # Optimal storage conditions for each fruit type
+    optimal_temp_min = models.DecimalField(max_digits=5, decimal_places=2, default=2.0)
+    optimal_temp_max = models.DecimalField(max_digits=5, decimal_places=2, default=8.0)
+    optimal_humidity_min = models.DecimalField(max_digits=5, decimal_places=2, default=85.0)
+    optimal_humidity_max = models.DecimalField(max_digits=5, decimal_places=2, default=95.0)
+    optimal_light_max = models.IntegerField(default=100)  # Maximum light (lux)
+    optimal_co2_max = models.IntegerField(default=400)    # Maximum CO₂ (ppm)
+    
+    # Shelf life information
+    shelf_life_days = models.IntegerField(default=7)
+    ethylene_sensitive = models.BooleanField(default=False)
+    chilling_sensitive = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return self.name
+
+class FruitBatch(models.Model):
+    """Batch of fruits for monitoring"""
+    BATCH_STATUS = [
+        ('pending', 'Pending'),
+        ('active', 'Active Monitoring'),
+        ('completed', 'Completed'),
+        ('discarded', 'Discarded'),
+    ]
+    
+    batch_number = models.CharField(max_length=50, unique=True)
+    fruit_type = models.ForeignKey(FruitType, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)
+    quantity = models.IntegerField(default=0)
+    arrival_date = models.DateTimeField(default=timezone.now)
+    expected_expiry = models.DateTimeField()
+    supplier = models.CharField(max_length=200, blank=True)
+    storage_location = models.ForeignKey('StorageLocation', on_delete=models.SET_NULL, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=BATCH_STATUS, default='pending')
+    
+    # Initial quality assessment
+    initial_quality = models.CharField(max_length=20, choices=[
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('fair', 'Fair'),
+        ('poor', 'Poor'),
+    ], default='good')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name_plural = "Fruit Batches"
+    
+    def __str__(self):
+        return f"{self.batch_number} - {self.fruit_type.name}"
+    
+    @property
+    def days_remaining(self):
+        """Calculate days until expected expiry"""
+        if self.expected_expiry:
+            remaining = (self.expected_expiry - timezone.now()).days
+            return max(remaining, 0)
+        return 0
+
+# Update Product model to include fruit relationships (add these to existing Product model)
+# Note: We've already added these fields to the Product model above
+
+class FruitQualityReading(models.Model):
+    """Sensor readings and quality predictions for fruit batches"""
+    QUALITY_CLASSES = [
+        ('Fresh', 'Fresh'),
+        ('Good', 'Good'),
+        ('Fair', 'Fair'),
+        ('Poor', 'Poor'),
+        ('Rotten', 'Rotten'),
+    ]
+    
+    fruit_batch = models.ForeignKey(FruitBatch, on_delete=models.CASCADE, related_name='quality_readings')
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    # Sensor readings
+    temperature = models.DecimalField(max_digits=5, decimal_places=2)
+    humidity = models.DecimalField(max_digits=5, decimal_places=2)
+    light_intensity = models.DecimalField(max_digits=10, decimal_places=2, help_text="Light in lux")
+    co2_level = models.IntegerField()
+    
+    # Quality assessment
+    actual_class = models.CharField(max_length=20, choices=QUALITY_CLASSES, blank=True)
+    predicted_class = models.CharField(max_length=20, choices=QUALITY_CLASSES)
+    confidence_score = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    
+    # Additional metrics
+    ethylene_level = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text="Ethylene in ppm")
+    weight_loss = models.DecimalField(max_digits=5, decimal_places=2, default=0.0, help_text="Weight loss percentage")
+    firmness = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text="Firmness in N")
+    
+    # AI model info
+    model_used = models.CharField(max_length=50, blank=True)
+    model_version = models.CharField(max_length=20, blank=True)
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['fruit_batch', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.fruit_batch.batch_number} - {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+# ==================== STORAGE & SENSOR MODELS ====================
+
 class StorageLocation(models.Model):
     """Storage location for products"""
     name = models.CharField(max_length=200)
@@ -466,7 +448,46 @@ class StorageLocation(models.Model):
     def available_capacity(self):
         return self.capacity - self.current_occupancy
 
+class RealTimeSensorData(models.Model):
+    """Real-time sensor data model"""
+    SENSOR_TYPES = [
+        ('temperature', 'Temperature'),
+        ('humidity', 'Humidity'),
+        ('light', 'Light Intensity'),
+        ('co2', 'CO₂ Level'),
+        ('ethylene', 'Ethylene'),
+        ('weight', 'Weight'),
+        ('firmness', 'Firmness'),
+        ('color', 'Color'),
+        ('vibration', 'Vibration'),
+        ('pressure', 'Pressure'),
+    ]
+    
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True)
+    fruit_batch = models.ForeignKey(FruitBatch, on_delete=models.CASCADE, null=True, blank=True)
+    sensor_type = models.CharField(max_length=50, choices=SENSOR_TYPES)
+    value = models.FloatField()
+    unit = models.CharField(max_length=20)
+    location = models.ForeignKey(StorageLocation, on_delete=models.CASCADE, null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    
+    # Quality prediction
+    predicted_class = models.CharField(max_length=20, blank=True)
+    condition_confidence = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    
+    class Meta:
+        ordering = ['-recorded_at']
+        indexes = [
+            models.Index(fields=['product', 'sensor_type', 'recorded_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.sensor_type} - {self.value}{self.unit}"
+
+# ==================== AI & DATASET MODELS ====================
+
 class ProductDataset(models.Model):
+    """Product datasets for AI training"""
     DATASET_TYPES = [
         ('anomaly_detection', 'Anomaly Detection'),
         ('sales_forecast', 'Sales Forecasting'),
@@ -488,10 +509,12 @@ class ProductDataset(models.Model):
         return f"{self.name} ({self.get_dataset_type_display()})"
 
 class TrainedModel(models.Model):
+    """Trained AI models"""
     MODEL_TYPES = [
         ('anomaly_detection', 'Anomaly Detection'),
         ('sales_forecast', 'Sales Forecasting'),
         ('stock_prediction', 'Stock Prediction'),
+        ('fruit_quality', 'Fruit Quality Prediction'),
     ]
     
     name = models.CharField(max_length=200)
@@ -506,29 +529,7 @@ class TrainedModel(models.Model):
     def __str__(self):
         return f"{self.name} - {self.get_model_type_display()}"
 
-class RealTimeSensorData(models.Model):
-    SENSOR_TYPES = [
-        ('temperature', 'Temperature'),
-        ('humidity', 'Humidity'),
-        ('weight', 'Weight'),
-        ('vibration', 'Vibration'),
-        ('pressure', 'Pressure'),
-    ]
-    
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    sensor_type = models.CharField(max_length=50, choices=SENSOR_TYPES)
-    value = models.FloatField()
-    unit = models.CharField(max_length=20)
-    location = models.ForeignKey(StorageLocation, on_delete=models.CASCADE)
-    recorded_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['product', 'sensor_type', 'recorded_at']),
-        ]
-    
-    def __str__(self):
-        return f"{self.sensor_type} - {self.product.name} - {self.value}{self.unit}"
+# ==================== ALERT & NOTIFICATION MODELS ====================
 
 class ProductAlert(models.Model):
     """Product quality and stock alerts"""
@@ -578,7 +579,7 @@ class Notification(models.Model):
     message = models.TextField()
     notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES)
     is_read = models.BooleanField(default=False)
-    related_object_type = models.CharField(max_length=100, blank=True)  # e.g., 'product_alert', 'order'
+    related_object_type = models.CharField(max_length=100, blank=True)
     related_object_id = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -587,9 +588,11 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.title} - {self.user.username}"
-    
-# Enhanced Payment Models
+
+# ==================== PAYMENT MODELS ====================
+
 class Payment(models.Model):
+    """Payment model"""
     PAYMENT_METHODS = [
         # Mobile Money - Tanzania
         ('mpesa', 'M-Pesa (TZ)'),
@@ -671,34 +674,6 @@ class Payment(models.Model):
     
     def is_successful(self):
         return self.status == 'completed'
-    
-    def get_payment_provider_config(self):
-        """Get configuration for payment provider"""
-        provider_map = {
-            'mpesa': 'mpesa_tz',
-            'tigo_tz': 'tigo_tz',
-            'airtel_tz': 'airtel_tz',
-            'halotel_tz': 'halotel_tz',
-            'mtn_rw': 'mtn_rw',
-            'airtel_rw': 'airtel_rw',
-            'mtn_ug': 'mtn_ug',
-            'airtel_ug': 'airtel_ug',
-            'mpesa_ke': 'mpesa_ke',
-        }
-        provider = provider_map.get(self.payment_method)
-        if provider:
-            return PaymentGatewaySettings.objects.filter(gateway=provider, is_active=True).first()
-        return None
-    
-    def get_country_code(self):
-        """Get country code from payment method"""
-        country_map = {
-            'mpesa': 'TZ', 'tigo_tz': 'TZ', 'airtel_tz': 'TZ', 'halotel_tz': 'TZ',
-            'mtn_rw': 'RW', 'airtel_rw': 'RW',
-            'mtn_ug': 'UG', 'airtel_ug': 'UG',
-            'mpesa_ke': 'KE',
-        }
-        return country_map.get(self.payment_method, 'US')
 
 class PaymentGatewaySettings(models.Model):
     """Enhanced payment gateway configuration"""
@@ -728,8 +703,8 @@ class PaymentGatewaySettings(models.Model):
     gateway = models.CharField(max_length=20, choices=GATEWAY_CHOICES, unique=True)
     is_active = models.BooleanField(default=False)
     display_name = models.CharField(max_length=100, blank=True)
-    supported_countries = models.JSONField(default=list)  # List of country codes
-    supported_currencies = models.JSONField(default=list)  # List of currencies
+    supported_countries = models.JSONField(default=list)
+    supported_currencies = models.JSONField(default=list)
     
     # API Credentials
     api_key = models.CharField(max_length=255, blank=True)
@@ -750,12 +725,6 @@ class PaymentGatewaySettings(models.Model):
     
     def __str__(self):
         return f"{self.get_gateway_display()} Settings"
-    
-    def get_supported_countries_display(self):
-        return ", ".join(self.supported_countries)
-    
-    def get_supported_currencies_display(self):
-        return ", ".join(self.supported_currencies)
 
 class CurrencyExchangeRate(models.Model):
     """Currency exchange rates"""
@@ -768,4 +737,145 @@ class CurrencyExchangeRate(models.Model):
         unique_together = ['base_currency', 'target_currency']
     
     def __str__(self):
-        return f"{self.base_currency}/{self.target_currency}: {self.exchange_rate}"    
+        return f"{self.base_currency}/{self.target_currency}: {self.exchange_rate}"
+
+# ==================== SITE CONTENT MODELS ====================
+
+class SiteInfo(models.Model):
+    """Store site-wide information"""
+    name = models.CharField(max_length=200, default="Bika")
+    tagline = models.CharField(max_length=300, blank=True)
+    description = models.TextField(blank=True)
+    email = models.EmailField(default="contact@bika.com")
+    phone = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    logo = models.ImageField(upload_to='site/logo/', blank=True, null=True)
+    favicon = models.ImageField(upload_to='site/favicon/', blank=True, null=True)
+    
+    # Social Media
+    facebook_url = models.URLField(blank=True)
+    twitter_url = models.URLField(blank=True)
+    instagram_url = models.URLField(blank=True)
+    linkedin_url = models.URLField(blank=True)
+    
+    # SEO
+    meta_title = models.CharField(max_length=200, blank=True)
+    meta_description = models.TextField(blank=True)
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Site Information"
+        verbose_name_plural = "Site Information"
+    
+    def __str__(self):
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        # Ensure only one instance exists
+        if not self.pk and SiteInfo.objects.exists():
+            existing = SiteInfo.objects.first()
+            existing.name = self.name
+            existing.tagline = self.tagline
+            existing.description = self.description
+            existing.email = self.email
+            existing.phone = self.phone
+            existing.address = self.address
+            if self.logo:
+                existing.logo = self.logo
+            if self.favicon:
+                existing.favicon = self.favicon
+            existing.facebook_url = self.facebook_url
+            existing.twitter_url = self.twitter_url
+            existing.instagram_url = self.instagram_url
+            existing.linkedin_url = self.linkedin_url
+            existing.meta_title = self.meta_title
+            existing.meta_description = self.meta_description
+            existing.save()
+            return
+        super().save(*args, **kwargs)
+
+class Service(models.Model):
+    """Services offered by Bika"""
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    description = models.TextField()
+    icon = models.CharField(max_length=100, help_text="Font Awesome icon class")
+    image = models.ImageField(upload_to='services/', blank=True, null=True)
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['display_order', 'name']
+    
+    def __str__(self):
+        return self.name
+    
+    def get_absolute_url(self):
+        return reverse('bika:service_detail', kwargs={'slug': self.slug})
+
+class Testimonial(models.Model):
+    """Customer testimonials"""
+    name = models.CharField(max_length=200)
+    position = models.CharField(max_length=200, blank=True)
+    company = models.CharField(max_length=200, blank=True)
+    content = models.TextField()
+    image = models.ImageField(upload_to='testimonials/', blank=True, null=True)
+    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)], default=5)
+    is_featured = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-is_featured', '-created_at']
+    
+    def __str__(self):
+        return f"Testimonial from {self.name}"
+
+class ContactMessage(models.Model):
+    """Contact form messages"""
+    STATUS_CHOICES = [
+        ('new', 'New'),
+        ('read', 'Read'),
+        ('replied', 'Replied'),
+        ('closed', 'Closed'),
+    ]
+    
+    name = models.CharField(max_length=200)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20, blank=True)
+    subject = models.CharField(max_length=200)
+    message = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='new')
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    replied_at = models.DateTimeField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-submitted_at']
+    
+    def __str__(self):
+        return f"{self.name} - {self.subject}"
+    
+    def mark_as_replied(self):
+        self.status = 'replied'
+        self.replied_at = timezone.now()
+        self.save()
+
+class FAQ(models.Model):
+    """Frequently Asked Questions"""
+    question = models.CharField(max_length=300)
+    answer = models.TextField()
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['display_order', '-created_at']
+        verbose_name = "FAQ"
+        verbose_name_plural = "FAQs"
+    
+    def __str__(self):
+        return self.question

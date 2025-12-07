@@ -1,5 +1,7 @@
 {% extends 'bika/base.html' %}
 {% load static %}
+{% load humanize %}
+
 
 {% block title %}Shopping Cart - Bika{% endblock %}
 
@@ -69,10 +71,10 @@
                                     </td>
                                     <td class="align-middle">
                                         <div class="product-price">
-                                            <span class="h6 text-primary">${{ item.product.price }}</span>
+                                            <span class="h6 text-primary">${{ item.product.price|floatformat:2 }}</span>
                                             {% if item.product.compare_price %}
                                             <small class="text-muted text-decoration-line-through d-block">
-                                                ${{ item.product.compare_price }}
+                                                ${{ item.product.compare_price|floatformat:2 }}
                                             </small>
                                             {% endif %}
                                         </div>
@@ -93,7 +95,7 @@
                                         </div>
                                     </td>
                                     <td class="align-middle">
-                                        <span class="h6 text-primary item-total">${{ item.total_price }}</span>
+                                        <span class="h6 text-primary item-total">${{ item.total_price|floatformat:2 }}</span>
                                     </td>
                                     <td class="align-middle">
                                         <button class="btn btn-outline-danger btn-sm remove-from-cart" 
@@ -132,24 +134,27 @@
                                     <h6 class="card-title border-bottom pb-2">Order Summary</h6>
                                     <div class="d-flex justify-content-between mb-2">
                                         <span>Subtotal:</span>
-                                        <span class="cart-subtotal">${{ total_price }}</span>
+                                        <span class="cart-subtotal">${{ subtotal|floatformat:2 }}</span>
                                     </div>
                                     <div class="d-flex justify-content-between mb-2">
                                         <span>Shipping:</span>
-                                        <span>$5.00</span>
+                                        <span>${{ shipping_cost|floatformat:2 }}</span>
                                     </div>
                                     <div class="d-flex justify-content-between mb-2">
-                                        <span>Tax:</span>
-                                        <span>${{ total_price|floatformat:2 }}</span>
+                                        <span>Tax ({{ tax_rate_percentage|floatformat:0 }}%):</span>
+                                        <span>${{ tax_amount|floatformat:2 }}</span>
                                     </div>
                                     <div class="d-flex justify-content-between mb-3 fw-bold border-top pt-2">
                                         <span>Total:</span>
-                                        <span class="cart-grand-total">${{ total_price|add:5|add:total_price }}</span>
+                                        <span class="cart-grand-total">${{ total_amount|floatformat:2 }}</span>
                                     </div>
-                                    <div class="d-grid">
-                                        <button class="btn btn-primary btn-lg">
+                                    <div class="d-grid gap-2">
+                                        <a href="{% url 'bika:checkout' %}" class="btn btn-primary btn-lg">
                                             <i class="fas fa-lock me-2"></i>Proceed to Checkout
-                                        </button>
+                                        </a>
+                                        <a href="{% url 'bika:product_list' %}" class="btn btn-outline-primary">
+                                            <i class="fas fa-arrow-left me-2"></i>Continue Shopping
+                                        </a>
                                     </div>
                                     <div class="text-center mt-2">
                                         <small class="text-muted">
@@ -207,10 +212,32 @@
 .card.border-primary {
     border: 2px solid #667eea !important;
 }
+
+.toast {
+    z-index: 9999;
+}
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Get CSRF token
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    const csrftoken = getCookie('csrftoken');
+    
     // Quantity controls
     document.querySelectorAll('.quantity-controls').forEach(control => {
         const decreaseBtn = control.querySelector('.quantity-decrease');
@@ -255,20 +282,34 @@ document.addEventListener('DOMContentLoaded', function() {
             const productId = this.dataset.productId;
             const cartItem = this.closest('.cart-item');
             
-            fetch(`/cart/remove/${productId}/`, {
+            fetch(`{% url 'bika:remove_from_cart' 0 %}`.replace('0', productId), {
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': '{{ csrf_token }}'
+                    'X-CSRFToken': csrftoken
                 }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    cartItem.remove();
-                    updateCartTotals(data);
-                    showToast('Product removed from cart!', 'success');
+                    cartItem.style.opacity = '0.5';
+                    setTimeout(() => {
+                        cartItem.remove();
+                        updateCartTotals(data);
+                        showToast('Product removed from cart!', 'success');
+                        
+                        // If no items left, reload page
+                        if (document.querySelectorAll('.cart-item').length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    showToast(data.message || 'Failed to remove item', 'danger');
                 }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('An error occurred', 'danger');
             });
         });
     });
@@ -277,30 +318,35 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.add-to-wishlist').forEach(button => {
         button.addEventListener('click', function() {
             const productId = this.dataset.productId;
-            const cartItem = this.closest('.cart-item');
             
-            fetch(`/wishlist/add/${productId}/`, {
+            fetch(`{% url 'bika:add_to_wishlist' 0 %}`.replace('0', productId), {
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': '{{ csrf_token }}'
+                    'X-CSRFToken': csrftoken
                 }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     showToast('Product added to wishlist!', 'success');
+                } else {
+                    showToast(data.message || 'Failed to add to wishlist', 'danger');
                 }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('An error occurred', 'danger');
             });
         });
     });
     
     function updateCartQuantity(productId, quantity) {
-        fetch(`/cart/update/${productId}/`, {
+        fetch(`{% url 'bika:update_cart' 0 %}`.replace('0', productId), {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': '{{ csrf_token }}',
+                'X-CSRFToken': csrftoken,
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: `quantity=${quantity}`
@@ -309,44 +355,117 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 const cartItem = document.querySelector(`.cart-item[data-product-id="${productId}"]`);
-                const itemTotal = cartItem.querySelector('.item-total');
-                itemTotal.textContent = `$${data.item_total}`;
-                updateCartTotals(data);
+                if (cartItem) {
+                    const itemTotal = cartItem.querySelector('.item-total');
+                    itemTotal.textContent = `$${parseFloat(data.item_total).toFixed(2)}`;
+                    
+                    // Update quantity input and buttons
+                    const quantityInput = cartItem.querySelector('.quantity-input');
+                    const increaseBtn = cartItem.querySelector('.quantity-increase');
+                    const decreaseBtn = cartItem.querySelector('.quantity-decrease');
+                    
+                    if (quantityInput) quantityInput.value = quantity;
+                    if (increaseBtn) increaseBtn.disabled = quantity >= parseInt(quantityInput.max);
+                    if (decreaseBtn) decreaseBtn.disabled = quantity <= 1;
+                    
+                    updateCartTotals(data);
+                    showToast('Cart updated!', 'success');
+                }
+            } else {
+                showToast(data.message || 'Failed to update cart', 'danger');
             }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('An error occurred', 'danger');
         });
     }
     
     function updateCartTotals(data) {
-        document.querySelector('.cart-subtotal').textContent = `$${data.total_price}`;
-        document.querySelector('.cart-grand-total').textContent = `$${(parseFloat(data.total_price) + 5 + parseFloat(data.total_price)).toFixed(2)}`;
+        // Update subtotal
+        const subtotalElement = document.querySelector('.cart-subtotal');
+        if (subtotalElement && data.subtotal !== undefined) {
+            subtotalElement.textContent = `$${parseFloat(data.subtotal).toFixed(2)}`;
+        }
         
-        // Update cart count in header
-        const cartBadge = document.querySelector('.fa-shopping-cart').parentElement.querySelector('.badge');
-        if (cartBadge) {
-            cartBadge.textContent = data.cart_count || 0;
+        // Update shipping if provided
+        const shippingElement = document.querySelectorAll('.d-flex.justify-content-between.mb-2')[1];
+        if (shippingElement && data.shipping_cost !== undefined) {
+            const shippingSpan = shippingElement.querySelector('span:last-child');
+            if (shippingSpan) {
+                shippingSpan.textContent = `$${parseFloat(data.shipping_cost).toFixed(2)}`;
+            }
+        }
+        
+        // Update tax if provided
+        const taxElements = document.querySelectorAll('.d-flex.justify-content-between.mb-2');
+        if (taxElements.length >= 3 && data.tax_amount !== undefined) {
+            const taxSpan = taxElements[2].querySelector('span:last-child');
+            if (taxSpan) {
+                taxSpan.textContent = `$${parseFloat(data.tax_amount).toFixed(2)}`;
+            }
+        }
+        
+        // Update grand total
+        const grandTotalElement = document.querySelector('.cart-grand-total');
+        if (grandTotalElement && data.total_amount !== undefined) {
+            grandTotalElement.textContent = `$${parseFloat(data.total_amount).toFixed(2)}`;
+        }
+        
+        // Update cart count in badge
+        const cartBadge = document.querySelector('.card-header .badge');
+        if (cartBadge && data.cart_count !== undefined) {
+            cartBadge.textContent = data.cart_count + ' item' + (data.cart_count !== 1 ? 's' : '');
+        }
+        
+        // Update cart count in header (if exists)
+        const headerCartIcon = document.querySelector('.fa-shopping-cart');
+        if (headerCartIcon) {
+            const headerCartBadge = headerCartIcon.closest('a')?.querySelector('.badge');
+            if (headerCartBadge && data.cart_count !== undefined) {
+                headerCartBadge.textContent = data.cart_count;
+            }
         }
         
         // Update cart count in sidebar
-        const sidebarCartBadge = document.querySelector('.list-group-item[href*="cart"] .badge');
-        if (sidebarCartBadge) {
-            sidebarCartBadge.textContent = data.cart_count || 0;
+        const sidebarCartItem = document.querySelector('.list-group-item[href*="cart"]');
+        if (sidebarCartItem) {
+            const sidebarCartBadge = sidebarCartItem.querySelector('.badge');
+            if (sidebarCartBadge && data.cart_count !== undefined) {
+                sidebarCartBadge.textContent = data.cart_count;
+            }
         }
     }
     
     function showToast(message, type) {
+        // Remove existing toasts
+        document.querySelectorAll('.toast').forEach(toast => toast.remove());
+        
+        // Create new toast
         const toast = document.createElement('div');
         toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed top-0 end-0 m-3`;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
+        toast.setAttribute('aria-atomic', 'true');
+        
+        const icon = type === 'success' ? 'check-circle' : 'exclamation-circle';
         toast.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">${message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            <div class="d-flex align-items-center">
+                <div class="toast-body d-flex align-items-center">
+                    <i class="fas fa-${icon} me-2"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         `;
+        
         document.body.appendChild(toast);
         
-        const bsToast = new bootstrap.Toast(toast);
+        // Initialize and show Bootstrap toast
+        const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
         bsToast.show();
         
+        // Remove toast after it's hidden
         toast.addEventListener('hidden.bs.toast', () => {
             toast.remove();
         });
