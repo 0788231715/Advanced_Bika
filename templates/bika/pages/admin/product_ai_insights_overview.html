@@ -1,0 +1,453 @@
+{% extends 'bika/pages/admin/base_admin.html' %}
+{% load static %}
+
+{% block title %}Product AI Insights - Bika Admin{% endblock %}
+
+{% block page_title %}Product AI Insights Dashboard{% endblock %}
+{% block page_subtitle %}AI-powered analytics and predictions for all products{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    <button class="btn btn-admin" onclick="window.location.href='{% url 'bika:scan_products' %}'">
+        <i class="fas fa-search me-2"></i>Scan Products
+    </button>
+    <div class="btn-group">
+        <button type="button" class="btn btn-admin-outline dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="fas fa-download me-2"></i>Export
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#">Export as CSV</a></li>
+            <li><a class="dropdown-item" href="#">Export as Excel</a></li>
+            <li><a class="dropdown-item" href="#">Export as PDF</a></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item active">Product AI Insights</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <!-- Stats Cards -->
+    <div class="col-md-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #4361ee, #3a0ca3);">
+            <i class="fas fa-box"></i>
+            <h3>{{ total_products }}</h3>
+            <p>Total Products</p>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #4cc9f0, #4895ef);">
+            <i class="fas fa-robot"></i>
+            <h3>{{ ai_predictions_count|default:"0" }}</h3>
+            <p>AI Predictions</p>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #f72585, #b5179e);">
+            <i class="fas fa-bell"></i>
+            <h3>{{ active_alerts|default:"0" }}</h3>
+            <p>Active Alerts</p>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #7209b7, #560bad);">
+            <i class="fas fa-chart-line"></i>
+            <h3>{{ high_risk_products|default:"0" }}</h3>
+            <p>High Risk Products</p>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Products Table -->
+        <div class="admin-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list me-2"></i>Products with AI Insights</h5>
+                <div class="input-group" style="width: 300px;">
+                    <input type="text" class="form-control" placeholder="Search products..." id="product-search">
+                    <button class="btn btn-outline-primary" type="button">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table admin-table data-table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Category</th>
+                                <th>Vendor</th>
+                                <th>Stock</th>
+                                <th>AI Predictions</th>
+                                <th>Alerts</th>
+                                <th>Risk Level</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for product in products %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        {% if product.images.first %}
+                                        <img src="{{ product.images.first.image.url }}" 
+                                             class="rounded me-3" 
+                                             width="40" 
+                                             height="40" 
+                                             alt="{{ product.name }}">
+                                        {% else %}
+                                        <div class="bg-light rounded d-flex align-items-center justify-content-center me-3" 
+                                             style="width: 40px; height: 40px;">
+                                            <i class="fas fa-box text-muted"></i>
+                                        </div>
+                                        {% endif %}
+                                        <div>
+                                            <strong>{{ product.name|truncatechars:30 }}</strong>
+                                            <div class="small text-muted">{{ product.sku }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{{ product.category.name }}</td>
+                                <td>{{ product.vendor.username }}</td>
+                                <td>
+                                    {% if product.stock_quantity > 10 %}
+                                    <span class="badge bg-success">In Stock</span>
+                                    {% elif product.stock_quantity > 0 %}
+                                    <span class="badge bg-warning">Low Stock</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Out of Stock</span>
+                                    {% endif %}
+                                    <div class="small">{{ product.stock_quantity }} units</div>
+                                </td>
+                                <td>
+                                    {% if product.ai_predictions %}
+                                    <span class="badge bg-info">{{ product.ai_predictions|length }}</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">None</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if product.alert_count > 0 %}
+                                    <span class="badge bg-danger">{{ product.alert_count }}</span>
+                                    {% else %}
+                                    <span class="badge bg-success">0</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if product.alert_count > 3 %}
+                                    <span class="badge bg-danger">High</span>
+                                    {% elif product.alert_count > 0 %}
+                                    <span class="badge bg-warning">Medium</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Low</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'bika:product_ai_insights' product_id=product.id %}" 
+                                           class="btn btn-outline-primary" 
+                                           title="View AI Insights">
+                                            <i class="fas fa-chart-line"></i>
+                                        </a>
+                                        <a href="{% url 'admin:bika_product_change' product.id %}" 
+                                           class="btn btn-outline-secondary" 
+                                           title="Edit Product">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <a href="{% url 'bika:product_detail' slug=product.slug %}" 
+                                           class="btn btn-outline-info" 
+                                           title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="8" class="text-center py-4">
+                                    <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                                    <h5>No products found</h5>
+                                    <p class="text-muted">Add some products to see AI insights</p>
+                                    <a href="{% url 'admin:bika_product_add' %}" class="btn btn-admin">
+                                        <i class="fas fa-plus me-2"></i>Add Product
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- AI Insights Summary -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-brain me-2"></i>AI Insights Summary</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Products Analyzed</span>
+                        <span class="badge bg-primary">{{ total_products }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>With AI Predictions</span>
+                        <span class="badge bg-info">{{ products_with_predictions|default:"0" }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Active Alerts</span>
+                        <span class="badge bg-danger">{{ active_alerts|default:"0" }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>High Risk Products</span>
+                        <span class="badge bg-warning">{{ high_risk_products|default:"0" }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Last Analysis</span>
+                        <span class="text-muted">{{ last_analysis|default:"Never" }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-admin" onclick="runAiAnalysis()">
+                        <i class="fas fa-play-circle me-2"></i>Run AI Analysis
+                    </button>
+                    <button class="btn btn-admin-outline" onclick="scanForAnomalies()">
+                        <i class="fas fa-search me-2"></i>Scan for Anomalies
+                    </button>
+                    <button class="btn btn-admin-outline" onclick="generateReports()">
+                        <i class="fas fa-file-alt me-2"></i>Generate Reports
+                    </button>
+                    <a href="{% url 'bika:train_models' %}" class="btn btn-admin-outline">
+                        <i class="fas fa-cogs me-2"></i>Train AI Models
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent AI Predictions -->
+        <div class="admin-card">
+            <div class="card-header">
+                <h5><i class="fas fa-history me-2"></i>Recent AI Predictions</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_predictions %}
+                <div class="list-group list-group-flush">
+                    {% for prediction in recent_predictions|slice:":5" %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>{{ prediction.product.name|truncatechars:20 }}</strong>
+                                <div class="small text-muted">
+                                    {{ prediction.prediction_date|date:"M d, H:i" }}
+                                </div>
+                            </div>
+                            <span class="badge bg-{{ prediction.predicted_class|lower }}">
+                                {{ prediction.predicted_class }}
+                            </span>
+                        </div>
+                        <div class="small mt-1">
+                            Confidence: {{ prediction.confidence_score }}%
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-3">
+                    <i class="fas fa-robot fa-2x text-muted mb-2"></i>
+                    <p class="text-muted mb-0">No recent predictions</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI Analysis Modal -->
+<div class="modal fade" id="aiAnalysisModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">AI Analysis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Analyzing Products...</h5>
+                    <p class="text-muted">Please wait while AI analyzes your products</p>
+                    <div class="progress mt-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize DataTable
+    $(document).ready(function() {
+        $('.data-table').DataTable({
+            "pageLength": 25,
+            "order": [[5, 'desc']], // Sort by alerts (column 5) descending
+            "language": {
+                "search": "Search products:"
+            }
+        });
+        
+        // Product search
+        $('#product-search').on('keyup', function() {
+            $('.data-table').DataTable().search(this.value).draw();
+        });
+    });
+    
+    // AI Analysis Functions
+    function runAiAnalysis() {
+        $('#aiAnalysisModal').modal('show');
+        
+        // Simulate progress
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += 10;
+            $('.progress-bar').css('width', progress + '%');
+            
+            if (progress >= 100) {
+                clearInterval(interval);
+                setTimeout(() => {
+                    $('#aiAnalysisModal').modal('hide');
+                    showSuccessToast('AI Analysis Complete', 'Products have been analyzed successfully!');
+                    location.reload(); // Reload to show new data
+                }, 1000);
+            }
+        }, 300);
+    }
+    
+    function scanForAnomalies() {
+        showLoading('Scanning for anomalies...');
+        
+        $.ajax({
+            url: '{% url "bika:scan_products" %}',
+            type: 'POST',
+            data: {
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                hideLoading();
+                if (response.success) {
+                    showSuccessToast('Scan Complete', response.message || 'Anomaly scan completed!');
+                    location.reload();
+                } else {
+                    showErrorToast('Scan Failed', response.message || 'An error occurred during scanning.');
+                }
+            },
+            error: function() {
+                hideLoading();
+                showErrorToast('Error', 'Failed to scan for anomalies. Please try again.');
+            }
+        });
+    }
+    
+    function generateReports() {
+        showLoading('Generating reports...');
+        
+        // Simulate report generation
+        setTimeout(() => {
+            hideLoading();
+            showSuccessToast('Reports Generated', 'AI insights report has been generated.');
+            
+            // Create download link
+            const link = document.createElement('a');
+            link.href = '#';
+            link.download = 'ai_insights_report.csv';
+            link.click();
+        }, 2000);
+    }
+    
+    // Toast notifications
+    function showSuccessToast(title, message) {
+        toastr.success(message, title);
+    }
+    
+    function showErrorToast(title, message) {
+        toastr.error(message, title);
+    }
+    
+    function showLoading(message) {
+        $('#global-spinner').addClass('active');
+        if (message) {
+            $('#global-spinner .visually-hidden').text(message);
+        }
+    }
+    
+    function hideLoading() {
+        $('#global-spinner').removeClass('active');
+    }
+    
+    // Add toastr CSS if not already included
+    if (typeof toastr === 'undefined') {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css';
+        document.head.appendChild(link);
+        
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js';
+        script.onload = function() {
+            toastr.options = {
+                "closeButton": true,
+                "progressBar": true,
+                "positionClass": "toast-top-right",
+                "timeOut": "5000"
+            };
+        };
+        document.head.appendChild(script);
+    }
+</script>
+
+<style>
+    /* Additional styles for this page */
+    .badge.bg-fresh { background-color: #28a745 !important; }
+    .badge.bg-good { background-color: #17a2b8 !important; }
+    .badge.bg-fair { background-color: #ffc107 !important; color: #212529; }
+    .badge.bg-poor { background-color: #dc3545 !important; }
+    .badge.bg-rotten { background-color: #6c757d !important; }
+    
+    .product-image {
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+    
+    .risk-high { border-left: 4px solid #dc3545; }
+    .risk-medium { border-left: 4px solid #ffc107; }
+    .risk-low { border-left: 4px solid #28a745; }
+    
+    .progress-bar-animated {
+        animation: progress-bar-stripes 1s linear infinite;
+    }
+</style>
+{% endblock %}

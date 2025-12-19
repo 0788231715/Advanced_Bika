@@ -1,0 +1,98 @@
+<!-- bika/templates/bika/pages/product_ai_insights.html -->
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}AI Insights - {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">
+        <i class="fas fa-brain mr-2"></i>AI Insights: {{ product.name }}
+    </h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Current Prediction -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Current AI Prediction</h6>
+                </div>
+                <div class="card-body">
+                    {% if current_prediction %}
+                        <div class="alert alert-{% if current_prediction.predicted_class == 'Fresh' %}success{% elif current_prediction.predicted_class == 'Good' %}info{% elif current_prediction.predicted_class == 'Fair' %}warning{% else %}danger{% endif %}">
+                            <h4 class="alert-heading">
+                                {{ current_prediction.predicted_class }} Quality
+                            </h4>
+                            <p>Confidence: {{ current_prediction.confidence|floatformat:0 }}%</p>
+                            <hr>
+                            <p class="mb-0">Model: {{ current_prediction.model_used }}</p>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No prediction available.</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Alerts -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Active Alerts</h6>
+                </div>
+                <div class="card-body">
+                    {% if alerts %}
+                        {% for alert in alerts %}
+                        <div class="alert alert-{% if alert.severity == 'critical' %}danger{% elif alert.severity == 'high' %}warning{% else %}info{% endif %}">
+                            <strong>{{ alert.alert_type|title }}</strong>: {{ alert.message }}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted">No active alerts for this product.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <!-- Product Info -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Product Information</h6>
+                </div>
+                <div class="card-body">
+                    <h5>{{ product.name }}</h5>
+                    <p>SKU: {{ product.sku }}</p>
+                    <p>Category: {{ product.category.name }}</p>
+                    <p>Stock: {{ product.stock_quantity }}</p>
+                    <a href="{% url 'bika:product_detail' product.slug %}" class="btn btn-primary">
+                        <i class="fas fa-eye mr-2"></i>View Product
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-warning" onclick="scanProduct()">
+                            <i class="fas fa-search mr-2"></i>Scan for Issues
+                        </button>
+                        <a href="{% url 'bika:ai_alert_dashboard' %}" class="btn btn-info">
+                            <i class="fas fa-robot mr-2"></i>AI Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function scanProduct() {
+    // Implement scan functionality
+    alert('Scanning product for quality issues...');
+}
+</script>
+{% endblock %}

@@ -1,4 +1,4 @@
-# bika/urls.py - UPDATED AND COMPLETE VERSION
+# bika/urls.py - COMPLETE AND WORKING VERSION
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
@@ -139,4 +139,43 @@ urlpatterns = [
     
     # ==================== UTILITY ====================
     path('vendor/products/bulk-action/', views.handle_bulk_actions, name='handle_bulk_actions'),
+    path('api/alerts/mark-all-read/', views.mark_all_notifications_read, name='mark_all_alerts_read'),
+    path('api/dashboard/export-sales/', views.export_sales_report, name='export_sales_report'),
+    
+    # Dashboard API endpoints
+    path('api/dashboard/sales-analytics/', views.sales_analytics_api, name='sales_analytics_api'),
+    path('api/dashboard/alerts/', views.get_active_alerts, name='get_active_alerts'),
+    path('api/dashboard/performance/', views.performance_metrics_api, name='performance_metrics_api'),
+    path('api/dashboard/export-inventory/', views.export_inventory_report, name='export_inventory_report'),
+    path('api/dashboard/user-activity/', views.get_user_activity, name='get_user_activity'),
+    
+    # ==================== AI ALERT SYSTEM ====================
+    path('admin/ai-alerts/', views.ai_alert_dashboard, name='ai_alert_dashboard'),
+    path('admin/scan-products/', views.scan_all_products_for_alerts, name='scan_products'),
+    path('admin/train-new-model/', views.train_new_model_view, name='train_new_model'),
+    path('admin/model-management/', views.model_management, name='model_management'),
+    path('admin/activate-model/<int:model_id>/', views.activate_model, name='activate_model'),
+    path('admin/generate-sample-data/', views.generate_sample_data_view, name='generate_sample_data'),
+    path('admin/download-dataset/', views.download_generated_dataset, name='download_dataset'),
+    # In bika/urls.py - ADD THIS
+    path('admin/product-ai-insights-overview/', views.product_ai_insights_overview, name='product_ai_insights_overview'),
+    # ==================== PRODUCT AI INSIGHTS ====================
+    path('product/<int:product_id>/ai-insights/', views.product_ai_insights, name='product_ai_insights'),
+    
+    # ==================== ADDITIONAL API ENDPOINTS ====================
+    path('api/batch-scan/', views.batch_product_scan_api, name='batch_scan_api'),
+    path('api/product/<int:product_id>/quality-prediction/', views.get_product_quality_prediction, name='quality_prediction_api'),
+    path('api/analyze-csv/', views.analyze_csv, name='analyze_csv'),
+    # ==================== AI TRAINING ====================
+    path('ai/train-models/', views.train_five_models_view, name='train_models'),
+    path('ai/training-results/', views.training_results_view, name='training_results'),
+    path('ai/model-comparison/', views.model_comparison_view, name='model_comparison'),
+    path('ai/generate-sample-dataset/', views.generate_sample_dataset_view, name='generate_sample_dataset'),
+    # bika/urls.py - Add these URLs
+    path('ai/train-models/', views.train_five_models_view, name='train_models'),
+    path('ai/training-results/', views.training_results_view, name='training_results'),
+    path('ai/model-comparison/', views.model_comparison_view, name='model_comparison'),
+    path('ai/generate-sample-dataset/', views.generate_sample_dataset_view, name='generate_sample_dataset'),
+    # ==================== FAVICON (to avoid 404) ====================
+    path('favicon.ico', views.favicon_view, name='favicon'),
 ]

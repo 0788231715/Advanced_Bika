@@ -1,0 +1,867 @@
+<!-- bika/templates/bika/pages/admin/ai_alert_dashboard.html -->
+{% extends 'bika/base_admin.html' %}
+{% load static %}
+
+{% block title %}AI Alert Dashboard - Bika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .alert-card {
+        border-left: 5px solid;
+        transition: all 0.3s;
+        margin-bottom: 15px;
+    }
+    .alert-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .alert-critical {
+        border-left-color: #dc3545;
+        background-color: #f8d7da;
+    }
+    .alert-high {
+        border-left-color: #ffc107;
+        background-color: #fff3cd;
+    }
+    .alert-medium {
+        border-left-color: #17a2b8;
+        background-color: #d1ecf1;
+    }
+    .alert-low {
+        border-left-color: #28a745;
+        background-color: #d4edda;
+    }
+    .severity-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .badge-critical {
+        background-color: #dc3545;
+        color: white;
+    }
+    .badge-high {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    .badge-medium {
+        background-color: #17a2b8;
+        color: white;
+    }
+    .badge-low {
+        background-color: #28a745;
+        color: white;
+    }
+    .model-status {
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-weight: 500;
+    }
+    .status-active {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    .status-inactive {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .prediction-card {
+        border-radius: 8px;
+        overflow: hidden;
+        transition: all 0.3s;
+    }
+    .prediction-card:hover {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    .quality-indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+    }
+    .quality-excellent { background-color: #28a745; }
+    .quality-good { background-color: #17a2b8; }
+    .quality-fair { background-color: #ffc107; }
+    .quality-poor { background-color: #fd7e14; }
+    .quality-rotten { background-color: #dc3545; }
+    .scan-progress {
+        height: 8px;
+        border-radius: 4px;
+        background-color: #e9ecef;
+        overflow: hidden;
+    }
+    .scan-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transition: width 0.3s ease;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            <i class="fas fa-robot text-primary mr-2"></i>AI Alert Dashboard
+        </h1>
+        <div>
+            <button type="button" class="btn btn-primary" onclick="scanAllProducts()">
+                <i class="fas fa-search mr-2"></i>Scan All Products
+            </button>
+            <a href="{% url 'bika:model_management' %}" class="btn btn-outline-primary ml-2">
+                <i class="fas fa-cogs mr-2"></i>Model Management
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="metric-card">
+                <div class="text-uppercase mb-2 font-weight-bold">Total Alerts</div>
+                <div class="h2 mb-0">{{ total_alerts }}</div>
+                <div class="small">
+                    <span class="text-success font-weight-bold">Active: {{ critical_alerts|add:high_alerts }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="metric-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <div class="text-uppercase mb-2 font-weight-bold">Critical Alerts</div>
+                <div class="h2 mb-0">{{ critical_alerts }}</div>
+                <div class="small">
+                    <span class="text-warning font-weight-bold">Require Immediate Action</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="metric-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <div class="text-uppercase mb-2 font-weight-bold">High Priority</div>
+                <div class="h2 mb-0">{{ high_alerts }}</div>
+                <div class="small">
+                    <span class="text-warning font-weight-bold">Review Within 24 Hours</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="metric-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                <div class="text-uppercase mb-2 font-weight-bold">AI Model Status</div>
+                <div class="h2 mb-0">
+                    {% if ai_service.active_model %}
+                        <span class="text-success">Active</span>
+                    {% else %}
+                        <span class="text-warning">No Active Model</span>
+                    {% endif %}
+                </div>
+                <div class="small">
+                    {% if ai_service.active_model %}
+                        <span class="font-weight-bold">{{ ai_service.active_model.record.name }}</span>
+                    {% else %}
+                        <a href="{% url 'bika:train_new_model' %}" class="text-white font-weight-bold">Train Model →</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Alerts Section -->
+    <div class="row">
+        <div class="col-lg-8 mb-4">
+            <!-- Active Alerts -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>Active Alerts
+                    </h6>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="refreshAlerts()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportAlerts()">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if alerts %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Severity</th>
+                                        <th>Product</th>
+                                        <th>Alert Type</th>
+                                        <th>Message</th>
+                                        <th>Time</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for alert in alerts %}
+                                    <tr class="alert-row" data-alert-id="{{ alert.id }}">
+                                        <td>
+                                            <span class="severity-badge badge-{{ alert.severity }}">
+                                                {{ alert.severity|title }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if alert.product %}
+                                                <a href="{% url 'bika:product_detail' alert.product.slug %}" 
+                                                   class="font-weight-bold">
+                                                    {{ alert.product.name|truncatechars:30 }}
+                                                </a>
+                                                <div class="small text-muted">
+                                                    Vendor: {{ alert.product.vendor.business_name|default:alert.product.vendor.username }}
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted">No Product</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-info">
+                                                {{ alert.alert_type|title|cut:"_" }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <strong>{{ alert.message|truncatechars:50 }}</strong>
+                                            {% if alert.details %}
+                                                <button class="btn btn-sm btn-link" 
+                                                        onclick="showAlertDetails({{ alert.id }})">
+                                                    <i class="fas fa-info-circle"></i>
+                                                </button>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="small">
+                                                {{ alert.created_at|date:"M d, Y" }}
+                                            </div>
+                                            <div class="small text-muted">
+                                                {{ alert.created_at|time:"H:i" }}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-success" 
+                                                        onclick="resolveAlert({{ alert.id }})"
+                                                        title="Mark as Resolved">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                                <a href="{% url 'bika:product_ai_insights' alert.product.id %}" 
+                                                   class="btn btn-info" title="AI Insights">
+                                                    <i class="fas fa-brain"></i>
+                                                </a>
+                                                <button class="btn btn-warning" 
+                                                        onclick="showRecommendations({{ alert.id }})"
+                                                        title="View Recommendations">
+                                                    <i class="fas fa-lightbulb"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Pagination -->
+                        <nav>
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item disabled">
+                                    <a class="page-link" href="#" tabindex="-1">Previous</a>
+                                </li>
+                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                <li class="page-item"><a class="page-link" href="#">2</a></li>
+                                <li class="page-item"><a class="page-link" href="#">3</a></li>
+                                <li class="page-item">
+                                    <a class="page-link" href="#">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                            <h4 class="text-success">No Active Alerts</h4>
+                            <p class="text-muted">All systems are running normally. No issues detected.</p>
+                            <button class="btn btn-primary" onclick="scanAllProducts()">
+                                <i class="fas fa-search mr-2"></i>Run System Scan
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- AI Predictions -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-chart-line mr-2"></i>Recent AI Predictions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if recent_predictions %}
+                        <div class="row">
+                            {% for prediction in recent_predictions %}
+                            <div class="col-md-6 mb-3">
+                                <div class="prediction-card card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <div>
+                                                <h6 class="font-weight-bold mb-1">
+                                                    <span class="quality-indicator quality-{{ prediction.predicted_class|lower }}"></span>
+                                                    {{ prediction.product.name|truncatechars:25 }}
+                                                </h6>
+                                                <div class="small text-muted">
+                                                    {{ prediction.fruit_type.name|default:"Unknown" }}
+                                                </div>
+                                            </div>
+                                            <span class="badge {% if prediction.confidence_score >= 0.8 %}badge-success{% elif prediction.confidence_score >= 0.6 %}badge-warning{% else %}badge-danger{% endif %}">
+                                                {{ prediction.confidence_score|floatformat:0 }}%
+                                            </span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <div class="progress" style="height: 8px;">
+                                                <div class="progress-bar bg-{% if prediction.predicted_class == 'Fresh' %}success{% elif prediction.predicted_class == 'Good' %}info{% elif prediction.predicted_class == 'Fair' %}warning{% elif prediction.predicted_class == 'Poor' %}orange{% else %}danger{% endif %}" 
+                                                     style="width: {{ prediction.confidence_score|floatformat:0 }}%">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <div class="small">
+                                                <i class="fas fa-thermometer-half text-info mr-1"></i>
+                                                {{ prediction.temperature|floatformat:1 }}°C
+                                            </div>
+                                            <div class="small">
+                                                <i class="fas fa-tint text-primary mr-1"></i>
+                                                {{ prediction.humidity|floatformat:0 }}%
+                                            </div>
+                                            <div class="small">
+                                                <i class="far fa-clock text-muted mr-1"></i>
+                                                {{ prediction.prediction_date|timesince }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-chart-bar fa-2x text-muted mb-3"></i>
+                            <p class="text-muted">No recent predictions available.</p>
+                            <button class="btn btn-sm btn-outline-primary" onclick="runPredictions()">
+                                <i class="fas fa-bolt mr-1"></i>Run Predictions
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column - AI Status & Actions -->
+        <div class="col-lg-4 mb-4">
+            <!-- AI Model Status -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-cogs mr-2"></i>AI Model Status
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if ai_service.active_model %}
+                        <div class="text-center mb-4">
+                            <div class="model-status status-active mb-3">
+                                <i class="fas fa-check-circle mr-2"></i>
+                                Model Active
+                            </div>
+                            <h5>{{ ai_service.active_model.record.name }}</h5>
+                            <p class="small text-muted">
+                                Trained on {{ ai_service.active_model.record.trained_date|date:"F d, Y" }}
+                            </p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="small">Accuracy</span>
+                                <span class="small font-weight-bold">{{ ai_service.active_model.record.accuracy|floatformat:1 }}%</span>
+                            </div>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-success" 
+                                     style="width: {{ ai_service.active_model.record.accuracy }}%">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6 class="small font-weight-bold mb-2">Features Used:</h6>
+                            <div class="d-flex flex-wrap">
+                                {% for feature in ai_service.active_model.record.features_used|slice:":5" %}
+                                    <span class="badge badge-light mr-1 mb-1">{{ feature }}</span>
+                                {% endfor %}
+                                {% if ai_service.active_model.record.features_used|length > 5 %}
+                                    <span class="badge badge-light">+{{ ai_service.active_model.record.features_used|length|add:"-5" }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'bika:model_management' %}" class="btn btn-outline-primary">
+                                <i class="fas fa-chart-bar mr-2"></i>View Model Analytics
+                            </a>
+                            <a href="{% url 'bika:train_new_model' %}" class="btn btn-outline-success">
+                                <i class="fas fa-plus mr-2"></i>Train New Model
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-exclamation-triangle fa-2x text-warning mb-3"></i>
+                            <h5 class="text-warning">No Active Model</h5>
+                            <p class="text-muted mb-4">No AI model is currently active for predictions.</p>
+                            <a href="{% url 'bika:train_new_model' %}" class="btn btn-success">
+                                <i class="fas fa-plus mr-2"></i>Train First Model
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-bolt mr-2"></i>Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" onclick="scanAllProducts()">
+                            <i class="fas fa-search mr-2"></i>Scan All Products
+                        </button>
+                        <button class="btn btn-info" onclick="scanHighRiskProducts()">
+                            <i class="fas fa-exclamation-circle mr-2"></i>Scan High Risk Products
+                        </button>
+                        <button class="btn btn-warning" onclick="generateReport()">
+                            <i class="fas fa-file-alt mr-2"></i>Generate Alert Report
+                        </button>
+                        <a href="{% url 'bika:generate_sample_data' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-database mr-2"></i>Generate Sample Data
+                        </a>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <h6 class="font-weight-bold mb-3">System Status</h6>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <div class="text-center">
+                                <div class="h5 mb-0">{{ total_alerts }}</div>
+                                <div class="small text-muted">Total Alerts</div>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="text-center">
+                                <div class="h5 mb-0">{{ critical_alerts }}</div>
+                                <div class="small text-muted text-danger">Critical</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <div class="h5 mb-0">{{ high_alerts }}</div>
+                                <div class="small text-muted text-warning">High</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <div class="h5 mb-0">{{ alerts|length|add:"-critical_alerts|add:-high_alerts" }}</div>
+                                <div class="small text-muted">Medium/Low</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan Progress (Hidden by default) -->
+            <div class="card shadow mb-4" id="scanProgressCard" style="display: none;">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Scan in Progress
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <div class="scan-progress mb-2">
+                            <div id="scanProgressBar" class="scan-progress-bar" style="width: 0%"></div>
+                        </div>
+                        <div id="scanStatus" class="small text-muted">Initializing...</div>
+                    </div>
+                    <div id="scanResults" class="small"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Details Modal -->
+<div class="modal fade" id="alertDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Alert Details</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="alertDetailsContent">
+                <!-- Content loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" onclick="resolveCurrentAlert()">
+                    <i class="fas fa-check mr-2"></i>Mark as Resolved
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recommendations Modal -->
+<div class="modal fade" id="recommendationsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">AI Recommendations</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="recommendationsContent">
+                <!-- Content loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentAlertId = null;
+    
+    function scanAllProducts() {
+        // Show progress card
+        document.getElementById('scanProgressCard').style.display = 'block';
+        
+        // Simulate scan progress
+        let progress = 0;
+        const progressBar = document.getElementById('scanProgressBar');
+        const scanStatus = document.getElementById('scanStatus');
+        const scanResults = document.getElementById('scanResults');
+        
+        scanStatus.textContent = 'Starting system scan...';
+        
+        const interval = setInterval(() => {
+            progress += 10;
+            progressBar.style.width = progress + '%';
+            
+            if (progress <= 30) {
+                scanStatus.textContent = 'Loading product data...';
+            } else if (progress <= 60) {
+                scanStatus.textContent = 'Running AI predictions...';
+            } else if (progress <= 90) {
+                scanStatus.textContent = 'Generating alerts...';
+            }
+            
+            if (progress >= 100) {
+                clearInterval(interval);
+                scanStatus.innerHTML = '<span class="text-success">Scan completed successfully!</span>';
+                scanResults.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        System scan completed. Check for new alerts above.
+                    </div>
+                `;
+                
+                // Reload page after 3 seconds to show new alerts
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            }
+        }, 300);
+        
+        // Make actual API call
+        fetch('{% url "bika:scan_products" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({action: 'scan_all'})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Scan completed:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Scan error:', error);
+            scanStatus.innerHTML = '<span class="text-danger">Scan failed. Please try again.</span>';
+        });
+    }
+    
+    function resolveAlert(alertId) {
+        if (!confirm('Are you sure you want to mark this alert as resolved?')) {
+            return;
+        }
+        
+        fetch(`/api/alerts/${alertId}/resolve/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove alert row
+                document.querySelector(`.alert-row[data-alert-id="${alertId}"]`).remove();
+                
+                // Show success message
+                showToast('Alert marked as resolved!', 'success');
+                
+                // Update stats
+                updateAlertStats();
+            } else {
+                showToast('Failed to resolve alert: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('Error resolving alert', 'error');
+        });
+    }
+    
+    function showAlertDetails(alertId) {
+        currentAlertId = alertId;
+        
+        // Get alert details via AJAX
+        fetch(`/api/dashboard/alerts/`)
+        .then(response => response.json())
+        .then(data => {
+            const alert = data.alerts.find(a => a.id === alertId);
+            if (alert) {
+                const modalContent = document.getElementById('alertDetailsContent');
+                modalContent.innerHTML = `
+                    <div class="alert alert-${alert.severity === 'critical' ? 'danger' : alert.severity === 'high' ? 'warning' : 'info'}">
+                        <h5 class="alert-heading">${alert.title}</h5>
+                        <p>${alert.message}</p>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <h6>Details</h6>
+                            <ul class="list-unstyled">
+                                <li><strong>Severity:</strong> <span class="badge badge-${alert.severity}">${alert.severity}</span></li>
+                                <li><strong>Product:</strong> ${alert.product}</li>
+                                <li><strong>Date:</strong> ${alert.created_at}</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Sensor Data</h6>
+                            <ul class="list-unstyled">
+                                ${Object.entries(alert.details.sensor_data || {}).map(([key, value]) => 
+                                    `<li><strong>${key}:</strong> ${value}</li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <h6>Prediction Details</h6>
+                        <div class="card">
+                            <div class="card-body">
+                                <p><strong>Predicted Quality:</strong> ${alert.details.predicted_quality}</p>
+                                <p><strong>Confidence:</strong> ${(alert.details.confidence * 100).toFixed(0)}%</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                $('#alertDetailsModal').modal('show');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('Error loading alert details', 'error');
+        });
+    }
+    
+    function resolveCurrentAlert() {
+        if (currentAlertId) {
+            $('#alertDetailsModal').modal('hide');
+            resolveAlert(currentAlertId);
+        }
+    }
+    
+    function showRecommendations(alertId) {
+        // Get alert recommendations
+        fetch(`/api/dashboard/alerts/`)
+        .then(response => response.json())
+        .then(data => {
+            const alert = data.alerts.find(a => a.id === alertId);
+            if (alert && alert.details.recommendations) {
+                const modalContent = document.getElementById('recommendationsContent');
+                modalContent.innerHTML = `
+                    <h6>AI Recommendations</h6>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lightbulb mr-2"></i>
+                        Based on the detected conditions, here are the recommended actions:
+                    </div>
+                    
+                    <ul class="list-group">
+                        ${alert.details.recommendations.map(rec => 
+                            `<li class="list-group-item">
+                                <i class="fas fa-check-circle text-success mr-2"></i>
+                                ${rec}
+                            </li>`
+                        ).join('')}
+                    </ul>
+                    
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            These recommendations are generated by the AI model based on industry best practices.
+                        </small>
+                    </div>
+                `;
+                
+                $('#recommendationsModal').modal('show');
+            } else {
+                modalContent.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        No specific recommendations available for this alert.
+                    </div>
+                `;
+                $('#recommendationsModal').modal('show');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+    
+    function refreshAlerts() {
+        showToast('Refreshing alerts...', 'info');
+        setTimeout(() => {
+            window.location.reload();
+        }, 1000);
+    }
+    
+    function exportAlerts() {
+        showToast('Exporting alert report...', 'info');
+        // Implement export functionality
+        window.location.href = '/api/dashboard/export-inventory/?type=alerts';
+    }
+    
+    function scanHighRiskProducts() {
+        showToast('Scanning high-risk products...', 'info');
+        // Implement high-risk scan
+    }
+    
+    function generateReport() {
+        showToast('Generating report...', 'info');
+        window.location.href = '/api/dashboard/export-sales/?report=alerts';
+    }
+    
+    function runPredictions() {
+        showToast('Running predictions on all products...', 'info');
+        scanAllProducts();
+    }
+    
+    function updateAlertStats() {
+        // Update stats after resolving alerts
+        fetch('/api/dashboard/alerts/')
+        .then(response => response.json())
+        .then(data => {
+            // Update UI elements with new stats
+            document.querySelector('.metric-card .h2').textContent = data.count;
+        })
+        .catch(error => console.error('Error updating stats:', error));
+    }
+    
+    function showToast(message, type = 'info') {
+        // Simple toast notification
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+        `;
+        toast.innerHTML = `
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+    
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    // Auto-refresh alerts every 60 seconds
+    setInterval(() => {
+        fetch('/api/dashboard/alerts/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.count > {{ total_alerts }}) {
+                showToast('New alerts detected! Refreshing...', 'warning');
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
+    }, 60000);
+    
+    // Initialize tooltips
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip();
+    });
+</script>
+{% endblock %}

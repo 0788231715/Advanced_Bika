@@ -1,0 +1,80 @@
+<!-- bika/templates/bika/pages/admin/model_management.html -->
+{% extends 'bika/base_admin.html' %}
+{% load static %}
+
+{% block title %}Model Management - Bika{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">
+        <i class="fas fa-cogs mr-2"></i>AI Model Management
+    </h1>
+    
+    {% if active_model %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-success text-white">
+            <h6 class="m-0 font-weight-bold">
+                <i class="fas fa-check-circle mr-2"></i>Active Model
+            </h6>
+        </div>
+        <div class="card-body">
+            <h4>{{ active_model.name }}</h4>
+            <p class="text-muted">Accuracy: {{ active_model.accuracy|floatformat:2 }}%</p>
+            <p>Features: {{ active_model.features }}</p>
+            <p>Trained: {{ active_model.trained_date|date:"F d, Y" }}</p>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">All Trained Models</h6>
+        </div>
+        <div class="card-body">
+            {% if comparison_result.success %}
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Accuracy</th>
+                                <th>Features</th>
+                                <th>Trained Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for model in comparison_result.models %}
+                            <tr>
+                                <td>{{ model.name }}</td>
+                                <td>{{ model.accuracy|floatformat:2 }}%</td>
+                                <td>{{ model.features_count }} features</td>
+                                <td>{{ model.created_at|date:"Y-m-d" }}</td>
+                                <td>
+                                    {% if model.is_active %}
+                                        <span class="badge badge-success">Active</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if not model.is_active %}
+                                        <form method="post" action="{% url 'bika:activate_model' model.id %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-primary">Activate</button>
+                                        </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">No models trained yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

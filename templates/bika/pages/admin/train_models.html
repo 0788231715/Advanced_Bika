@@ -1,0 +1,969 @@
+{% extends 'bika/pages/admin/base_admin.html' %}
+{% load static %}
+
+{% block title %}Train AI Models - Bika Admin{% endblock %}
+
+{% block page_title %}Train AI Models{% endblock %}
+{% block page_subtitle %}Train, compare, and deploy AI models for fruit quality prediction{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    <button class="btn btn-admin" onclick="startTraining()" id="train-btn">
+        <i class="fas fa-play-circle me-2"></i>Start Training
+    </button>
+    <button class="btn btn-admin-outline" onclick="generateDataset()">
+        <i class="fas fa-database me-2"></i>Generate Dataset
+    </button>
+    <a href="{% url 'model_management' %}" class="btn btn-admin-outline">
+        <i class="fas fa-cogs me-2"></i>Model Management
+    </a>
+</div>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{% url 'ai_alert_dashboard' %}">AI Dashboard</a></li>
+<li class="breadcrumb-item active">Train Models</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Left Column: Training Configuration -->
+    <div class="col-lg-8">
+        <!-- Training Configuration Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-sliders-h me-2"></i>Training Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form id="training-config-form" method="post" enctype="multipart/form-data" action="{% url 'bika:train_models' %}">
+                    {% csrf_token %}
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Data Source</label>
+                            <select class="form-select" id="data-source" name="data_source" onchange="toggleUploadField()">
+                                <option value="database">Use Database Products</option>
+                                <option value="upload">Upload CSV File</option>
+                                <option value="generate">Generate Sample Data</option>
+                            </select>
+                            <div class="form-text">Select where to get training data from</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Training Mode</label>
+                            <select class="form-select" id="training-mode" name="training_mode">
+                                <option value="five">Train 5 Models (Comparison)</option>
+                                <option value="single">Train Single Best Model</option>
+                                <option value="custom">Custom Selection</option>
+                            </select>
+                            <div class="form-text">Choose training approach</div>
+                        </div>
+                    </div>
+                    
+                    <!-- File Upload Field (Hidden by default) -->
+                    <div class="row mb-4" id="upload-field" style="display: none;">
+                        <div class="col-12">
+                            <label class="form-label">Upload CSV File</label>
+                            <input type="file" class="form-control" name="dataset_file" accept=".csv">
+                            <div class="form-text">
+                                Upload a CSV file with your data. The system will auto-detect the target column.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Test Size (%)</label>
+                            <input type="number" class="form-control" id="test-size" name="test_size" value="20" min="10" max="40">
+                            <div class="form-text">Percentage of data for testing</div>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Random State</label>
+                            <input type="number" class="form-control" id="random-state" name="random_state" value="42">
+                            <div class="form-text">Seed for reproducibility</div>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Cross-Validation Folds</label>
+                            <input type="number" class="form-control" id="cv-folds" name="cv_folds" value="5" min="3" max="10">
+                            <div class="form-text">Number of CV folds</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Model Selection (Visible for custom mode) -->
+                    <div class="mb-4" id="model-selection">
+                        <label class="form-label fw-bold">Select Models to Train</label>
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="models" value="rf" id="model-rf" checked>
+                                    <label class="form-check-label" for="model-rf">
+                                        <i class="fas fa-tree me-1"></i>Random Forest
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="models" value="xgb" id="model-xgb" checked>
+                                    <label class="form-check-label" for="model-xgb">
+                                        <i class="fas fa-rocket me-1"></i>XGBoost
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="models" value="svm" id="model-svm" checked>
+                                    <label class="form-check-label" for="model-svm">
+                                        <i class="fas fa-project-diagram me-1"></i>SVM
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="models" value="knn" id="model-knn" checked>
+                                    <label class="form-check-label" for="model-knn">
+                                        <i class="fas fa-users me-1"></i>KNN
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="models" value="gb" id="model-gb">
+                                    <label class="form-check-label" for="model-gb">
+                                        <i class="fas fa-layer-group me-1"></i>Gradient Boosting
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Advanced Options (Collapsed by default) -->
+                    <div class="accordion mb-4" id="advancedOptions">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedCollapse">
+                                    <i class="fas fa-cog me-2"></i>Advanced Options
+                                </button>
+                            </h2>
+                            <div id="advancedCollapse" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Problem Type</label>
+                                            <select class="form-select" id="problem-type" name="problem_type">
+                                                <option value="auto">Auto-detect</option>
+                                                <option value="classification">Classification</option>
+                                                <option value="regression">Regression</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Target Column</label>
+                                            <input type="text" class="form-control" id="target-column" name="target_column" placeholder="Auto-detect from CSV">
+                                            <div class="form-text">Leave empty for auto-detection</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Custom Parameters (JSON)</label>
+                                        <textarea class="form-control" id="custom-params" name="custom_params" rows="3" placeholder='{"rf": {"n_estimators": 200}, "xgb": {"max_depth": 8}}'></textarea>
+                                        <div class="form-text">Optional: Custom parameters for models</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Training Summary -->
+                    <div class="alert alert-info">
+                        <div class="d-flex">
+                            <div class="me-3">
+                                <i class="fas fa-info-circle fa-2x"></i>
+                            </div>
+                            <div>
+                                <h6 class="alert-heading">Training Summary</h6>
+                                <div id="training-summary">
+                                    <p class="mb-1">• Training 5 models with 80% of data</p>
+                                    <p class="mb-1">• 20% held out for testing</p>
+                                    <p class="mb-0">• 5-fold cross-validation</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-admin btn-lg" id="submit-training">
+                            <i class="fas fa-play-circle me-2"></i>Start Training Process
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Training Progress (Shown during AJAX training) -->
+        <div class="admin-card mb-4" id="training-progress-card" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-spinner fa-spin me-2"></i>Training in Progress</h5>
+                <button class="btn btn-sm btn-outline-danger" onclick="cancelTraining()">
+                    <i class="fas fa-stop me-1"></i>Cancel
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- Overall Progress -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Overall Progress</span>
+                        <span id="overall-progress-text">0%</span>
+                    </div>
+                    <div class="progress" style="height: 20px;">
+                        <div id="overall-progress" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <!-- Individual Model Progress -->
+                <div id="model-progress-container">
+                    <!-- Will be filled dynamically -->
+                </div>
+                
+                <!-- Training Log -->
+                <div class="mt-4">
+                    <h6 class="mb-2">Training Log</h6>
+                    <div id="training-log" class="border rounded p-3 bg-light" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                        <div id="log-content">
+                            <div>[INFO] Waiting to start training...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Statistics & Actions -->
+    <div class="col-lg-4">
+        <!-- Dataset Statistics -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-database me-2"></i>Available Data</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between">
+                        <span>Total Products</span>
+                        <span class="badge bg-primary">{{ product_count|default:"0" }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between">
+                        <span>Quality Readings</span>
+                        <span class="badge bg-info">{{ quality_readings|default:"0" }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between">
+                        <span>Active Batches</span>
+                        <span class="badge bg-success">{{ active_batches|default:"0" }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between">
+                        <span>Sensor Data</span>
+                        <span class="badge bg-warning">{{ sensor_data|default:"0" }}</span>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="alert alert-secondary">
+                        <h6><i class="fas fa-info-circle me-2"></i>Data Sources</h6>
+                        <p class="small mb-2">Training data can come from:</p>
+                        <ul class="small mb-0">
+                            <li>Product quality readings</li>
+                            <li>Sensor measurements</li>
+                            <li>Uploaded CSV files</li>
+                            <li>Generated sample data</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Existing Models -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar me-2"></i>Existing Models</h5>
+            </div>
+            <div class="card-body">
+                {% if existing_models %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>Accuracy</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for model in existing_models %}
+                            <tr>
+                                <td>{{ model.name|truncatechars:15 }}</td>
+                                <td>
+                                    {% if model.accuracy %}
+                                    <div class="progress" style="height: 10px;">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: {{ model.accuracy }}%">
+                                        </div>
+                                    </div>
+                                    <small>{{ model.accuracy|floatformat:1 }}%</small>
+                                    {% else %}
+                                    <small class="text-muted">Not trained</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if model.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-3">
+                    <i class="fas fa-chart-line fa-2x text-muted mb-2"></i>
+                    <p class="text-muted small">No trained models found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="admin-card">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-admin" onclick="startAjaxTraining()" id="ajax-train-btn">
+                        <i class="fas fa-play me-2"></i>Start AJAX Training
+                    </button>
+                    <button class="btn btn-admin-outline" onclick="scanProductsForData()">
+                        <i class="fas fa-search me-2"></i>Scan Products
+                    </button>
+                    <a href="{% url 'model_management' %}" class="btn btn-admin-outline">
+                        <i class="fas fa-cogs me-2"></i>Manage Models
+                    </a>
+                    <a href="{% url 'ai_alert_dashboard' %}" class="btn btn-admin-outline">
+                        <i class="fas fa-robot me-2"></i>AI Dashboard
+                    </a>
+                </div>
+                
+                <hr class="my-4">
+                
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Training Tips</h6>
+                    <ul class="mb-0 small">
+                        <li>For CSV uploads: Include a 'Class' column for classification</li>
+                        <li>More data = better model accuracy</li>
+                        <li>Check data quality before training</li>
+                        <li>Save successful models for production use</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Training Results Modal -->
+<div class="modal fade" id="resultsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Training Results</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="results-content">
+                <!-- Content loaded via AJAX -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveBestModel()">
+                    <i class="fas fa-save me-2"></i>Save Best Model
+                </button>
+                <a href="{% url 'model_management' %}" class="btn btn-success">
+                    <i class="fas fa-cogs me-2"></i>Manage Models
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dataset Generation Modal -->
+<div class="modal fade" id="datasetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Generate Sample Dataset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="dataset-form" method="post" action="{% url 'bika:generate_sample_dataset' %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Number of Samples</label>
+                        <input type="number" class="form-control" name="samples" value="1000" min="100" max="10000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dataset Type</label>
+                        <select class="form-select" name="dataset_type">
+                            <option value="quality">Fruit Quality Data</option>
+                            <option value="sensor">Sensor Readings</option>
+                            <option value="mixed">Mixed Data</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        This generates synthetic data for testing AI models.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="generateDatasetConfirm()">
+                    <i class="fas fa-cog me-2"></i>Generate Dataset
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Training state
+    let isTraining = false;
+    let trainingInterval = null;
+    let currentTrainingId = null;
+    
+    // Toggle upload field based on data source selection
+    function toggleUploadField() {
+        const dataSource = document.getElementById('data-source').value;
+        const uploadField = document.getElementById('upload-field');
+        
+        if (dataSource === 'upload') {
+            uploadField.style.display = 'block';
+        } else {
+            uploadField.style.display = 'none';
+        }
+    }
+    
+    // Update training summary based on form inputs
+    function updateTrainingSummary() {
+        const testSize = parseInt(document.getElementById('test-size').value) || 20;
+        const trainingSize = 100 - testSize;
+        const mode = document.getElementById('training-mode').value;
+        
+        let modelCount = 5; // Default for "five" mode
+        
+        if (mode === 'custom') {
+            const checkboxes = ['model-rf', 'model-xgb', 'model-svm', 'model-knn', 'model-gb'];
+            modelCount = checkboxes.filter(id => document.getElementById(id)?.checked).length;
+        } else if (mode === 'single') {
+            modelCount = 1;
+        }
+        
+        const cvFolds = document.getElementById('cv-folds').value || 5;
+        const dataSource = document.getElementById('data-source').value;
+        
+        let dataSourceText = '';
+        if (dataSource === 'database') {
+            dataSourceText = 'Using product database';
+        } else if (dataSource === 'upload') {
+            dataSourceText = 'Using uploaded CSV';
+        } else {
+            dataSourceText = 'Using generated data';
+        }
+        
+        const summaryHTML = `
+            <p class="mb-1">• ${dataSourceText}</p>
+            <p class="mb-1">• Training ${modelCount} model${modelCount !== 1 ? 's' : ''} with ${trainingSize}% of data</p>
+            <p class="mb-1">• ${testSize}% held out for testing</p>
+            <p class="mb-0">• ${cvFolds}-fold cross-validation</p>
+        `;
+        
+        document.getElementById('training-summary').innerHTML = summaryHTML;
+    }
+    
+    // Start AJAX-based training
+    function startAjaxTraining() {
+        if (isTraining) {
+            showToast('Training already in progress!', 'warning');
+            return;
+        }
+        
+        // Get form data
+        const form = document.getElementById('training-config-form');
+        const formData = new FormData(form);
+        
+        // Show progress card
+        document.getElementById('training-progress-card').style.display = 'block';
+        document.getElementById('ajax-train-btn').disabled = true;
+        document.getElementById('submit-training').disabled = true;
+        isTraining = true;
+        
+        // Initialize progress UI
+        initializeProgressUI();
+        
+        // Start progress simulation (will be replaced with real updates)
+        simulateTrainingProgress();
+        
+        // Send AJAX request
+        fetch('{% url "bika:train_models" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Stop simulation
+                if (trainingInterval) {
+                    clearInterval(trainingInterval);
+                }
+                
+                // Show success
+                addLogMessage('[SUCCESS] Training completed successfully!');
+                document.getElementById('overall-progress').style.width = '100%';
+                document.getElementById('overall-progress-text').textContent = '100%';
+                
+                // Show results
+                setTimeout(() => {
+                    showTrainingResults(data);
+                }, 1000);
+                
+            } else {
+                showToast('Training failed: ' + data.message, 'error');
+                cancelTraining();
+            }
+        })
+        .catch(error => {
+            console.error('Training error:', error);
+            showToast('Error during training: ' + error.message, 'error');
+            cancelTraining();
+        });
+    }
+    
+    // Initialize progress UI
+    function initializeProgressUI() {
+        const container = document.getElementById('model-progress-container');
+        container.innerHTML = '';
+        
+        // Get selected models
+        const mode = document.getElementById('training-mode').value;
+        let modelsToShow = [];
+        
+        if (mode === 'five') {
+            modelsToShow = ['Random Forest', 'XGBoost', 'SVM', 'KNN', 'Gradient Boosting'];
+        } else if (mode === 'single') {
+            modelsToShow = ['Best Model'];
+        } else {
+            // Custom mode
+            const checkboxes = {
+                'model-rf': 'Random Forest',
+                'model-xgb': 'XGBoost',
+                'model-svm': 'SVM',
+                'model-knn': 'KNN',
+                'model-gb': 'Gradient Boosting'
+            };
+            
+            Object.entries(checkboxes).forEach(([id, name]) => {
+                if (document.getElementById(id)?.checked) {
+                    modelsToShow.push(name);
+                }
+            });
+        }
+        
+        // Create progress bars for each model
+        modelsToShow.forEach((modelName, index) => {
+            const progressId = `progress-${index}`;
+            const html = `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>${modelName}</span>
+                        <span id="${progressId}-text">0%</span>
+                    </div>
+                    <div class="progress" style="height: 12px;">
+                        <div id="${progressId}" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML += html;
+        });
+        
+        // Initialize log
+        document.getElementById('log-content').innerHTML = 
+            '<div class="text-success">[INFO] Preparing training data...</div>';
+    }
+    
+    // Simulate training progress (for UI feedback)
+    function simulateTrainingProgress() {
+        let overallProgress = 0;
+        const modelCount = document.querySelectorAll('#model-progress-container .progress-bar').length;
+        const modelProgress = Array(modelCount).fill(0);
+        
+        trainingInterval = setInterval(() => {
+            // Update overall progress
+            overallProgress += Math.random() * 2 + 0.5; // Random increment 0.5-2.5%
+            if (overallProgress > 100) overallProgress = 100;
+            
+            document.getElementById('overall-progress').style.width = overallProgress + '%';
+            document.getElementById('overall-progress-text').textContent = Math.round(overallProgress) + '%';
+            
+            // Update individual model progress
+            modelProgress.forEach((progress, index) => {
+                if (progress < 100) {
+                    const increment = Math.random() * 3 + 1; // Random increment 1-4%
+                    modelProgress[index] = Math.min(progress + increment, 100);
+                    
+                    const progressBar = document.getElementById(`progress-${index}`);
+                    const progressText = document.getElementById(`progress-${index}-text`);
+                    
+                    if (progressBar) {
+                        progressBar.style.width = modelProgress[index] + '%';
+                        progressText.textContent = Math.round(modelProgress[index]) + '%';
+                        
+                        // Update bar color based on progress
+                        if (modelProgress[index] < 30) {
+                            progressBar.className = 'progress-bar bg-info';
+                        } else if (modelProgress[index] < 70) {
+                            progressBar.className = 'progress-bar bg-primary';
+                        } else if (modelProgress[index] < 100) {
+                            progressBar.className = 'progress-bar bg-warning';
+                        } else {
+                            progressBar.className = 'progress-bar bg-success';
+                        }
+                    }
+                }
+            });
+            
+            // Add log messages
+            if (Math.random() < 0.3) { // 30% chance each interval
+                const messages = [
+                    '[INFO] Processing training data...',
+                    '[INFO] Scaling features...',
+                    '[INFO] Splitting dataset...',
+                    '[INFO] Training models...',
+                    '[INFO] Calculating metrics...',
+                    '[INFO] Cross-validating...'
+                ];
+                const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+                addLogMessage(randomMessage);
+            }
+            
+        }, 500);
+    }
+    
+    // Add message to training log
+    function addLogMessage(message) {
+        const logContent = document.getElementById('log-content');
+        const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        const messageDiv = document.createElement('div');
+        messageDiv.textContent = `[${timestamp}] ${message}`;
+        logContent.appendChild(messageDiv);
+        logContent.scrollTop = logContent.scrollHeight;
+    }
+    
+    // Cancel training
+    function cancelTraining() {
+        if (trainingInterval) {
+            clearInterval(trainingInterval);
+            trainingInterval = null;
+        }
+        
+        document.getElementById('training-progress-card').style.display = 'none';
+        document.getElementById('ajax-train-btn').disabled = false;
+        document.getElementById('submit-training').disabled = false;
+        isTraining = false;
+        
+        addLogMessage('[WARNING] Training cancelled by user');
+        
+        // Send cancellation request if training ID exists
+        if (currentTrainingId) {
+            fetch(`/api/training/${currentTrainingId}/cancel/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+        }
+    }
+    
+    // Show training results
+    function showTrainingResults(data) {
+        const modalContent = document.getElementById('results-content');
+        
+        let html = `
+            <div class="alert alert-success">
+                <h4><i class="fas fa-trophy me-2"></i>Training Completed Successfully!</h4>
+                <p>Best model: <strong>${data.best_model}</strong> with <strong>${data.best_accuracy}%</strong> accuracy</p>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-8">
+                    <h5>Model Performance Comparison</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Model</th>
+                                    <th>Accuracy</th>
+                                    <th>Precision</th>
+                                    <th>Recall</th>
+                                    <th>F1 Score</th>
+                                    <th>Training Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+        `;
+        
+        data.models.forEach(model => {
+            const isBest = model.name === data.best_model;
+            html += `
+                <tr class="${isBest ? 'table-success' : ''}">
+                    <td><strong>${model.name} ${isBest ? '<i class="fas fa-crown text-warning"></i>' : ''}</strong></td>
+                    <td><span class="badge bg-${model.accuracy > 90 ? 'success' : model.accuracy > 80 ? 'warning' : 'danger'}">${model.accuracy}%</span></td>
+                    <td>${model.precision}%</td>
+                    <td>${model.recall}%</td>
+                    <td>${model.f1_score}%</td>
+                    <td>${model.training_time}s</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <h5>Training Details</h5>
+                    <div class="card">
+                        <div class="card-body">
+                            <p><strong>Dataset:</strong> ${data.dataset_info.rows} rows × ${data.dataset_info.columns} columns</p>
+                            <p><strong>Problem Type:</strong> ${data.problem_type}</p>
+                            <p><strong>Target Column:</strong> ${data.target_column}</p>
+                            <p><strong>Training Time:</strong> ${data.total_training_time}s</p>
+                            <p><strong>Models Trained:</strong> ${data.models.length}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        modalContent.innerHTML = html;
+        
+        // Show modal
+        const resultsModal = new bootstrap.Modal(document.getElementById('resultsModal'));
+        resultsModal.show();
+        
+        // Re-enable buttons
+        document.getElementById('ajax-train-btn').disabled = false;
+        document.getElementById('submit-training').disabled = false;
+        isTraining = false;
+    }
+    
+    // Generate dataset
+    function generateDataset() {
+        const datasetModal = new bootstrap.Modal(document.getElementById('datasetModal'));
+        datasetModal.show();
+    }
+    
+    function generateDatasetConfirm() {
+        const form = document.getElementById('dataset-form');
+        form.submit();
+    }
+    
+    // Save best model to database
+    function saveBestModel() {
+        showToast('Saving model to database...', 'info');
+        
+        fetch('{% url "bika:activate_model" 0 %}'.replace('0', 'best'), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Model saved successfully!', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('resultsModal')).hide();
+                // Reload page to show updated model list
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast('Failed to save model: ' + data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Save error:', error);
+            showToast('Error saving model', 'error');
+        });
+    }
+    
+    // Scan products for data
+    function scanProductsForData() {
+        showToast('Scanning products for training data...', 'info');
+        
+        fetch('{% url "scan_products" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({action: 'scan_for_training'})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast(`Found ${data.products} products with ${data.readings} quality readings`, 'success');
+                // Update stats display
+                updateDatasetStats(data);
+            } else {
+                showToast('Scan failed: ' + data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Scan error:', error);
+            showToast('Error scanning products', 'error');
+        });
+    }
+    
+    // Update dataset stats
+    function updateDatasetStats(data) {
+        // You can implement this to update the stats display
+        console.log('Updated dataset stats:', data);
+    }
+    
+    // Utility functions
+    function showToast(message, type = 'info') {
+        // Simple toast notification
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+        `;
+        toast.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+    
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    // Form submission handler
+    document.getElementById('training-config-form').addEventListener('submit', function(e) {
+        const dataSource = document.getElementById('data-source').value;
+        
+        if (dataSource === 'upload') {
+            const fileInput = document.querySelector('input[name="dataset_file"]');
+            if (fileInput && !fileInput.value) {
+                e.preventDefault();
+                showToast('Please select a CSV file to upload', 'error');
+                return;
+            }
+        }
+        
+        // Show loading state
+        document.getElementById('submit-training').innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting Training...';
+        document.getElementById('submit-training').disabled = true;
+    });
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        // Update summary when configuration changes
+        ['data-source', 'training-mode', 'test-size', 'cv-folds', 'model-rf', 'model-xgb', 'model-svm', 'model-knn', 'model-gb'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', updateTrainingSummary);
+            }
+        });
+        
+        // Show/hide model selection based on training mode
+        document.getElementById('training-mode').addEventListener('change', function() {
+            const modelSelection = document.getElementById('model-selection');
+            if (this.value === 'custom') {
+                modelSelection.style.display = 'block';
+            } else {
+                modelSelection.style.display = 'none';
+            }
+            updateTrainingSummary();
+        });
+        
+        // Initial setup
+        toggleUploadField();
+        updateTrainingSummary();
+        
+        // Hide model selection initially if not in custom mode
+        const initialMode = document.getElementById('training-mode').value;
+        if (initialMode !== 'custom') {
+            document.getElementById('model-selection').style.display = 'none';
+        }
+    });
+</script>
+
+<style>
+    .progress-bar-animated {
+        animation: progress-bar-stripes 1s linear infinite;
+    }
+    
+    @keyframes progress-bar-stripes {
+        0% { background-position: 1rem 0; }
+        100% { background-position: 0 0; }
+    }
+    
+    #training-log {
+        background-color: #f8f9fa;
+        border-color: #dee2e6;
+    }
+    
+    #log-content div {
+        padding: 2px 0;
+        border-bottom: 1px solid #eee;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+    }
+    
+    .accordion-button:not(.collapsed) {
+        background-color: rgba(67, 97, 238, 0.1);
+        color: #4361ee;
+    }
+    
+    .form-switch .form-check-input:checked {
+        background-color: #4361ee;
+        border-color: #4361ee;
+    }
+</style>
+{% endblock %}

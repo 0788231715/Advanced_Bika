@@ -1,0 +1,793 @@
+{% extends 'bika/pages/admin/base_admin.html' %}
+{% load static %}
+
+{% block title %}Fruit Quality Dashboard - Bika Admin{% endblock %}
+
+{% block page_title %}Fruit Quality Monitoring Dashboard{% endblock %}
+{% block page_subtitle %}Real-time fruit quality tracking and AI predictions{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    <a href="{% url 'bika:create_fruit_batch' %}" class="btn btn-admin">
+        <i class="fas fa-plus-circle me-2"></i>New Batch
+    </a>
+    <button class="btn btn-admin-outline" onclick="refreshSensorData()">
+        <i class="fas fa-sync-alt me-2"></i>Refresh Data
+    </button>
+    <div class="btn-group">
+        <button type="button" class="btn btn-admin-outline dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="fas fa-download me-2"></i>Export
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="exportData('csv')">Export as CSV</a></li>
+            <li><a class="dropdown-item" href="#" onclick="exportData('excel')">Export as Excel</a></li>
+            <li><a class="dropdown-item" href="#" onclick="exportData('pdf')">Export as PDF</a></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item active">Fruit Quality Dashboard</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <!-- Stats Cards -->
+    <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #28a745, #20c997);">
+            <i class="fas fa-layer-group"></i>
+            <h3>{{ stats.total_batches }}</h3>
+            <p>Total Batches</p>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #17a2b8, #0dcaf0);">
+            <i class="fas fa-play-circle"></i>
+            <h3>{{ stats.active_batches }}</h3>
+            <p>Active Batches</p>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #ffc107, #fd7e14);">
+            <i class="fas fa-exclamation-triangle"></i>
+            <h3>{{ stats.at_risk_batches }}</h3>
+            <p>At Risk</p>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #dc3545, #dc3545);">
+            <i class="fas fa-times-circle"></i>
+            <h3>{{ stats.expired_batches }}</h3>
+            <p>Expired</p>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #6f42c1, #6610f2);">
+            <i class="fas fa-database"></i>
+            <h3>{{ stats.total_readings }}</h3>
+            <p>Total Readings</p>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+        <div class="stats-card" style="background: linear-gradient(135deg, #20c997, #198754);">
+            <i class="fas fa-robot"></i>
+            <h3>{{ stats.ai_predictions }}</h3>
+            <p>AI Predictions</p>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Left Column: Charts & Real-time Data -->
+    <div class="col-lg-8">
+        <!-- Quality Distribution Chart -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-pie me-2"></i>Fruit Quality Distribution</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="chart-container">
+                            <canvas id="qualityChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="list-group list-group-flush">
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="d-flex align-items-center">
+                                    <span class="quality-dot bg-success me-2"></span>
+                                    Fresh
+                                </span>
+                                <span class="badge bg-success">{{ quality_stats.fresh }}</span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="d-flex align-items-center">
+                                    <span class="quality-dot bg-info me-2"></span>
+                                    Good
+                                </span>
+                                <span class="badge bg-info">{{ quality_stats.good }}</span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="d-flex align-items-center">
+                                    <span class="quality-dot bg-warning me-2"></span>
+                                    Fair
+                                </span>
+                                <span class="badge bg-warning">{{ quality_stats.fair }}</span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="d-flex align-items-center">
+                                    <span class="quality-dot bg-danger me-2"></span>
+                                    Poor
+                                </span>
+                                <span class="badge bg-danger">{{ quality_stats.poor }}</span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="d-flex align-items-center">
+                                    <span class="quality-dot bg-secondary me-2"></span>
+                                    Rotten
+                                </span>
+                                <span class="badge bg-secondary">{{ quality_stats.rotten }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Batches Table -->
+        <div class="admin-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list me-2"></i>Active Fruit Batches</h5>
+                <div class="input-group" style="width: 300px;">
+                    <input type="text" class="form-control" placeholder="Search batches..." id="batch-search">
+                    <button class="btn btn-outline-primary" type="button">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table admin-table data-table">
+                        <thead>
+                            <tr>
+                                <th>Batch Number</th>
+                                <th>Fruit Type</th>
+                                <th>Quantity</th>
+                                <th>Storage Location</th>
+                                <th>Days Remaining</th>
+                                <th>Current Quality</th>
+                                <th>Temperature</th>
+                                <th>Humidity</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for batch in active_batches %}
+                            <tr class="{% if batch.days_remaining < 2 %}table-danger{% elif batch.days_remaining < 5 %}table-warning{% endif %}">
+                                <td>
+                                    <strong>{{ batch.batch_number }}</strong>
+                                    <div class="small text-muted">
+                                        Arrived: {{ batch.arrival_date|date:"M d" }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        {% if batch.fruit_type.image %}
+                                        <img src="{{ batch.fruit_type.image.url }}" 
+                                             class="rounded me-2" 
+                                             width="30" 
+                                             height="30" 
+                                             alt="{{ batch.fruit_type.name }}">
+                                        {% endif %}
+                                        <span>{{ batch.fruit_type.name }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">{{ batch.quantity }}</span>
+                                </td>
+                                <td>
+                                    {% if batch.storage_location %}
+                                    {{ batch.storage_location.name|truncatechars:15 }}
+                                    {% else %}
+                                    <span class="text-muted">Not assigned</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if batch.days_remaining > 7 %}
+                                    <span class="badge bg-success">{{ batch.days_remaining }} days</span>
+                                    {% elif batch.days_remaining > 3 %}
+                                    <span class="badge bg-warning">{{ batch.days_remaining }} days</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">{{ batch.days_remaining }} days</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% with latest=batch.quality_readings.first %}
+                                    {% if latest %}
+                                    {% if latest.predicted_class == 'Fresh' %}
+                                    <span class="badge bg-success">Fresh</span>
+                                    {% elif latest.predicted_class == 'Good' %}
+                                    <span class="badge bg-info">Good</span>
+                                    {% elif latest.predicted_class == 'Fair' %}
+                                    <span class="badge bg-warning">Fair</span>
+                                    {% elif latest.predicted_class == 'Poor' %}
+                                    <span class="badge bg-danger">Poor</span>
+                                    {% elif latest.predicted_class == 'Rotten' %}
+                                    <span class="badge bg-secondary">Rotten</span>
+                                    {% endif %}
+                                    <div class="small text-muted">
+                                        {{ latest.confidence_score }}% confidence
+                                    </div>
+                                    {% else %}
+                                    <span class="badge bg-light text-dark">No data</span>
+                                    {% endif %}
+                                    {% endwith %}
+                                </td>
+                                <td>
+                                    {% with latest=batch.quality_readings.first %}
+                                    {% if latest %}
+                                    {% if latest.temperature > batch.fruit_type.optimal_temp_max %}
+                                    <span class="text-danger">{{ latest.temperature }}°C</span>
+                                    {% elif latest.temperature < batch.fruit_type.optimal_temp_min %}
+                                    <span class="text-warning">{{ latest.temperature }}°C</span>
+                                    {% else %}
+                                    <span class="text-success">{{ latest.temperature }}°C</span>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                    {% endwith %}
+                                </td>
+                                <td>
+                                    {% with latest=batch.quality_readings.first %}
+                                    {% if latest %}
+                                    {{ latest.humidity }}%
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                    {% endwith %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'bika:batch_detail' batch_id=batch.id %}" 
+                                           class="btn btn-outline-primary" 
+                                           title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <a href="{% url 'bika:add_quality_reading' batch_id=batch.id %}" 
+                                           class="btn btn-outline-success" 
+                                           title="Add Reading">
+                                            <i class="fas fa-plus"></i>
+                                        </a>
+                                        <a href="{% url 'bika:batch_analytics' batch_id=batch.id %}" 
+                                           class="btn btn-outline-info" 
+                                           title="Analytics">
+                                            <i class="fas fa-chart-line"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="text-center py-4">
+                                    <i class="fas fa-apple-alt fa-3x text-muted mb-3"></i>
+                                    <h5>No active batches</h5>
+                                    <p class="text-muted">Create a new fruit batch to start monitoring</p>
+                                    <a href="{% url 'bika:create_fruit_batch' %}" class="btn btn-admin">
+                                        <i class="fas fa-plus me-2"></i>Create First Batch
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Real-time Data & Actions -->
+    <div class="col-lg-4">
+        <!-- Real-time Sensor Data -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-microchip me-2"></i>Real-time Sensor Data</h5>
+                <span class="badge bg-success" id="realtime-status">
+                    <i class="fas fa-circle"></i> Live
+                </span>
+            </div>
+            <div class="card-body">
+                <div id="sensor-data">
+                    {% if latest_sensor_data %}
+                    <div class="list-group list-group-flush">
+                        {% for sensor in latest_sensor_data %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ sensor.get_sensor_type_display }}</strong>
+                                    <div class="small text-muted">
+                                        Batch: {{ sensor.fruit_batch.batch_number|default:"N/A" }}
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <span class="h5">{{ sensor.value }}</span>
+                                    <span class="text-muted">{{ sensor.unit }}</span>
+                                </div>
+                            </div>
+                            {% if sensor.predicted_class %}
+                            <div class="small mt-1">
+                                Prediction: 
+                                <span class="badge bg-{{ sensor.predicted_class|lower }}">
+                                    {{ sensor.predicted_class }}
+                                </span>
+                                ({{ sensor.condition_confidence }}% confidence)
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="fas fa-wifi-slash fa-2x text-muted mb-2"></i>
+                        <p class="text-muted mb-0">No sensor data available</p>
+                        <button class="btn btn-sm btn-outline-primary mt-2" onclick="refreshSensorData()">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="fas fa-clock me-1"></i>
+                        Last updated: <span id="last-updated">{{ last_updated|default:"Never" }}</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Quality Check -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-search me-2"></i>Quick Quality Check</h5>
+            </div>
+            <div class="card-body">
+                <form id="quick-check-form" onsubmit="return runQuickCheck()">
+                    <div class="mb-3">
+                        <label class="form-label">Select Batch</label>
+                        <select class="form-select" id="quick-batch-select" required>
+                            <option value="">Choose a batch...</option>
+                            {% for batch in active_batches %}
+                            <option value="{{ batch.id }}">{{ batch.batch_number }} - {{ batch.fruit_type.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Temperature (°C)</label>
+                        <input type="number" class="form-control" id="quick-temp" step="0.1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Humidity (%)</label>
+                        <input type="number" class="form-control" id="quick-humidity" step="0.1" required>
+                    </div>
+                    <button type="submit" class="btn btn-admin w-100">
+                        <i class="fas fa-play me-2"></i>Run Quality Check
+                    </button>
+                </form>
+                <div id="quick-check-result" class="mt-3" style="display: none;">
+                    <div class="alert alert-success" role="alert">
+                        <h5 class="alert-heading" id="result-quality">Good</h5>
+                        <p id="result-confidence">Confidence: 95%</p>
+                        <hr>
+                        <p class="mb-0 small" id="result-recommendation">
+                            Recommended action: Continue monitoring
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fruit Type Distribution -->
+        <div class="admin-card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar me-2"></i>Fruit Type Distribution</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 200px;">
+                    <canvas id="fruitTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Detailed Analytics -->
+<div class="modal fade" id="analyticsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Batch Analytics</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="analytics-content">
+                    <!-- Content loaded via AJAX -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Initialize DataTable
+    $(document).ready(function() {
+        $('.data-table').DataTable({
+            "pageLength": 10,
+            "order": [[4, 'asc']], // Sort by days remaining
+            "language": {
+                "search": "Search batches:"
+            }
+        });
+        
+        // Batch search
+        $('#batch-search').on('keyup', function() {
+            $('.data-table').DataTable().search(this.value).draw();
+        });
+        
+        // Initialize charts
+        initializeCharts();
+        
+        // Start real-time updates
+        startRealtimeUpdates();
+    });
+    
+    // Initialize Charts
+    function initializeCharts() {
+        // Quality Distribution Chart
+        const qualityCtx = document.getElementById('qualityChart').getContext('2d');
+        const qualityChart = new Chart(qualityCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Fresh', 'Good', 'Fair', 'Poor', 'Rotten'],
+                datasets: [{
+                    data: [
+                        {{ quality_stats.fresh|default:0 }},
+                        {{ quality_stats.good|default:0 }},
+                        {{ quality_stats.fair|default:0 }},
+                        {{ quality_stats.poor|default:0 }},
+                        {{ quality_stats.rotten|default:0 }}
+                    ],
+                    backgroundColor: [
+                        '#28a745', // Fresh - green
+                        '#17a2b8', // Good - teal
+                        '#ffc107', // Fair - yellow
+                        '#dc3545', // Poor - red
+                        '#6c757d'  // Rotten - gray
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + context.raw;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Fruit Type Distribution Chart
+        const typeCtx = document.getElementById('fruitTypeChart').getContext('2d');
+        const typeChart = new Chart(typeCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ fruit_types_labels|safe }},
+                datasets: [{
+                    label: 'Number of Batches',
+                    data: {{ fruit_types_data|safe }},
+                    backgroundColor: 'rgba(67, 97, 238, 0.7)',
+                    borderColor: 'rgba(67, 97, 238, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+    
+    // Real-time Updates
+    let updateInterval;
+    
+    function startRealtimeUpdates() {
+        // Update every 30 seconds
+        updateInterval = setInterval(fetchSensorData, 30000);
+        
+        // Initial fetch
+        fetchSensorData();
+    }
+    
+    function fetchSensorData() {
+        $.ajax({
+            url: '{% url "bika:receive_sensor_data" %}',
+            type: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                if (data.success && data.sensor_data) {
+                    updateSensorDisplay(data.sensor_data);
+                    updateLastUpdated();
+                }
+            }
+        });
+    }
+    
+    function updateSensorDisplay(sensorData) {
+        const container = $('#sensor-data');
+        let html = '<div class="list-group list-group-flush">';
+        
+        sensorData.forEach(sensor => {
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${sensor.sensor_type_display}</strong>
+                            <div class="small text-muted">
+                                Batch: ${sensor.batch_number || 'N/A'}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <span class="h5">${sensor.value}</span>
+                            <span class="text-muted">${sensor.unit}</span>
+                        </div>
+                    </div>
+                    ${sensor.predicted_class ? `
+                    <div class="small mt-1">
+                        Prediction: 
+                        <span class="badge bg-${sensor.predicted_class.toLowerCase()}">
+                            ${sensor.predicted_class}
+                        </span>
+                        (${sensor.confidence}% confidence)
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.html(html);
+    }
+    
+    function updateLastUpdated() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        $('#last-updated').text(timeStr);
+    }
+    
+    function refreshSensorData() {
+        $('#realtime-status').removeClass('bg-success').addClass('bg-warning')
+            .html('<i class="fas fa-sync-alt fa-spin"></i> Refreshing...');
+        
+        fetchSensorData();
+        
+        setTimeout(() => {
+            $('#realtime-status').removeClass('bg-warning').addClass('bg-success')
+                .html('<i class="fas fa-circle"></i> Live');
+        }, 1000);
+    }
+    
+    // Quick Quality Check
+    function runQuickCheck() {
+        const batchId = $('#quick-batch-select').val();
+        const temperature = $('#quick-temp').val();
+        const humidity = $('#quick-humidity').val();
+        
+        if (!batchId || !temperature || !humidity) {
+            showErrorToast('Error', 'Please fill all fields');
+            return false;
+        }
+        
+        showLoading('Analyzing quality...');
+        
+        $.ajax({
+            url: '{% url "bika:predict_fruit_quality" %}',
+            type: 'POST',
+            data: {
+                'csrfmiddlewaretoken': '{{ csrf_token }}',
+                'batch_id': batchId,
+                'temperature': temperature,
+                'humidity': humidity
+            },
+            success: function(response) {
+                hideLoading();
+                if (response.success) {
+                    displayQuickCheckResult(response);
+                } else {
+                    showErrorToast('Prediction Failed', response.message || 'Unable to predict quality');
+                }
+            },
+            error: function() {
+                hideLoading();
+                showErrorToast('Error', 'Failed to run quality check');
+            }
+        });
+        
+        return false;
+    }
+    
+    function displayQuickCheckResult(result) {
+        const resultDiv = $('#quick-check-result');
+        const quality = result.predicted_class || 'Unknown';
+        const confidence = result.confidence || 0;
+        const recommendation = result.recommendation || 'No recommendation available';
+        
+        // Set quality badge color
+        let badgeClass = 'bg-secondary';
+        if (quality === 'Fresh') badgeClass = 'bg-success';
+        else if (quality === 'Good') badgeClass = 'bg-info';
+        else if (quality === 'Fair') badgeClass = 'bg-warning';
+        else if (quality === 'Poor') badgeClass = 'bg-danger';
+        else if (quality === 'Rotten') badgeClass = 'bg-dark';
+        
+        $('#result-quality').html(`
+            <span class="badge ${badgeClass}">${quality}</span>
+        `);
+        $('#result-confidence').text(`Confidence: ${confidence}%`);
+        $('#result-recommendation').text(recommendation);
+        
+        resultDiv.slideDown();
+    }
+    
+    // Export Functions
+    function exportData(format) {
+        showLoading(`Exporting data as ${format.toUpperCase()}...`);
+        
+        // Simulate export
+        setTimeout(() => {
+            hideLoading();
+            showSuccessToast('Export Complete', `Data exported as ${format.toUpperCase()} successfully.`);
+            
+            // Create download link
+            const link = document.createElement('a');
+            link.href = '#';
+            link.download = `fruit_quality_data.${format}`;
+            link.click();
+        }, 1500);
+    }
+    
+    // Utility Functions
+    function showSuccessToast(title, message) {
+        toastr.success(message, title);
+    }
+    
+    function showErrorToast(title, message) {
+        toastr.error(message, title);
+    }
+    
+    function showLoading(message) {
+        $('#global-spinner').addClass('active');
+        if (message) {
+            $('#global-spinner .visually-hidden').text(message);
+        }
+    }
+    
+    function hideLoading() {
+        $('#global-spinner').removeClass('active');
+    }
+    
+    // Load toastr if not loaded
+    if (typeof toastr === 'undefined') {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css';
+        document.head.appendChild(link);
+        
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js';
+        script.onload = function() {
+            toastr.options = {
+                "closeButton": true,
+                "progressBar": true,
+                "positionClass": "toast-top-right",
+                "timeOut": "5000"
+            };
+        };
+        document.head.appendChild(script);
+    }
+</script>
+
+<style>
+    /* Additional styles for fruit dashboard */
+    .quality-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+    
+    .stats-card h3 {
+        font-size: 1.8rem;
+        margin-bottom: 0.2rem;
+    }
+    
+    .stats-card p {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+    
+    #realtime-status {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    .table-danger {
+        background-color: rgba(220, 53, 69, 0.05);
+    }
+    
+    .table-warning {
+        background-color: rgba(255, 193, 7, 0.05);
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 250px;
+    }
+    
+    .list-group-item {
+        border-left: none;
+        border-right: none;
+        padding: 0.75rem 0;
+    }
+    
+    .list-group-item:first-child {
+        border-top: none;
+        padding-top: 0;
+    }
+    
+    .list-group-item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+    
+    .btn-group-sm .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    /* Sensor data animations */
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
+    }
+    
+    .list-group-item:hover {
+        animation: pulse 1s infinite;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+# Virtual Environments
+venv/
+ml_env/
+env/
+
+# AI / ML artifacts
+*.pkl
+*.csv
+*.json
+predictions_*
+training_report_*
+
+# OS
+.DS_Store
+Thumbs.db

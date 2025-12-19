@@ -1,0 +1,910 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Bika Administration{% endblock %}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    
+    <!-- Select2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    
+    <!-- Custom Admin CSS -->
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --secondary-color: #3a0ca3;
+            --success-color: #4cc9f0;
+            --warning-color: #f72585;
+            --danger-color: #7209b7;
+            --light-color: #f8f9fa;
+            --dark-color: #212529;
+            --sidebar-width: 250px;
+            --sidebar-collapsed-width: 70px;
+            --header-height: 60px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', 'Roboto', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fb;
+            color: #333;
+            font-size: 14px;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* Admin Header */
+        .admin-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            height: var(--header-height);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1030;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .admin-header .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .admin-header .navbar-brand i {
+            font-size: 1.8rem;
+        }
+        
+        /* Sidebar */
+        .admin-sidebar {
+            position: fixed;
+            top: var(--header-height);
+            left: 0;
+            bottom: 0;
+            width: var(--sidebar-width);
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+            z-index: 1020;
+            transition: all 0.3s ease;
+            overflow-y: auto;
+        }
+        
+        .admin-sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+        
+        .admin-sidebar .sidebar-menu {
+            list-style: none;
+            padding: 20px 0;
+        }
+        
+        .admin-sidebar .sidebar-menu li {
+            margin-bottom: 5px;
+        }
+        
+        .admin-sidebar .sidebar-menu a {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: #555;
+            text-decoration: none;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+        }
+        
+        .admin-sidebar .sidebar-menu a:hover,
+        .admin-sidebar .sidebar-menu a.active {
+            background-color: rgba(67, 97, 238, 0.1);
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+        }
+        
+        .admin-sidebar .sidebar-menu a i {
+            width: 24px;
+            font-size: 18px;
+            margin-right: 15px;
+            text-align: center;
+        }
+        
+        .admin-sidebar.collapsed .sidebar-menu span {
+            display: none;
+        }
+        
+        .admin-sidebar.collapsed .sidebar-menu a i {
+            margin-right: 0;
+            font-size: 20px;
+        }
+        
+        .admin-sidebar.collapsed .sidebar-menu a {
+            justify-content: center;
+            padding: 15px;
+        }
+        
+        /* Main Content */
+        .admin-content {
+            margin-left: var(--sidebar-width);
+            margin-top: var(--header-height);
+            padding: 20px;
+            transition: all 0.3s ease;
+            min-height: calc(100vh - var(--header-height));
+        }
+        
+        .admin-content.expanded {
+            margin-left: var(--sidebar-collapsed-width);
+        }
+        
+        /* Cards */
+        .admin-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: none;
+            margin-bottom: 20px;
+            transition: transform 0.3s;
+        }
+        
+        .admin-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .admin-card .card-header {
+            background: white;
+            border-bottom: 1px solid #eee;
+            padding: 15px 20px;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        
+        .admin-card .card-header h5 {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+        
+        .admin-card .card-body {
+            padding: 20px;
+        }
+        
+        /* Stats Cards */
+        .stats-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            height: 100%;
+        }
+        
+        .stats-card i {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+        
+        .stats-card h3 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .stats-card p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin: 0;
+        }
+        
+        /* Badges */
+        .badge-admin {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        /* Buttons */
+        .btn-admin {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-admin:hover {
+            background: var(--secondary-color);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-admin-outline {
+            background: transparent;
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-admin-outline:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        /* Tables */
+        .admin-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        .admin-table th {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-weight: 600;
+            padding: 12px 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .admin-table td {
+            padding: 12px 15px;
+            vertical-align: middle;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .admin-table tr:hover {
+            background-color: rgba(67, 97, 238, 0.05);
+        }
+        
+        /* Alerts */
+        .alert-admin {
+            border-radius: 8px;
+            border: none;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }
+        
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        /* Loading Spinner */
+        .loading-spinner {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .loading-spinner.active {
+            display: flex;
+        }
+        
+        /* Footer */
+        .admin-footer {
+            background: white;
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            margin-top: 30px;
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        /* Responsive */
+        @media (max-width: 992px) {
+            .admin-sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .admin-sidebar.show {
+                transform: translateX(0);
+            }
+            
+            .admin-content {
+                margin-left: 0;
+            }
+            
+            .admin-content.expanded {
+                margin-left: 0;
+            }
+            
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: var(--header-height);
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 1019;
+            }
+            
+            .sidebar-overlay.show {
+                display: block;
+            }
+        }
+        
+        /* Utility Classes */
+        .cursor-pointer {
+            cursor: pointer;
+        }
+        
+        .text-primary {
+            color: var(--primary-color) !important;
+        }
+        
+        .bg-primary {
+            background-color: var(--primary-color) !important;
+        }
+        
+        .border-primary {
+            border-color: var(--primary-color) !important;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+        
+        /* Animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Loading Spinner -->
+    <div class="loading-spinner" id="global-spinner">
+        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+    
+    <!-- Admin Header -->
+    <header class="admin-header">
+        <nav class="navbar navbar-expand-lg navbar-dark">
+            <div class="container-fluid">
+                <!-- Sidebar Toggle -->
+                <button class="btn btn-link text-white" id="sidebar-toggle">
+                    <i class="fas fa-bars fa-lg"></i>
+                </button>
+                
+                <!-- Brand -->
+                <a class="navbar-brand" href="{% url 'admin_dashboard' %}">
+                    <i class="fas fa-seedling"></i>
+                    <span>Bika Admin</span>
+                </a>
+                
+                <!-- User Menu -->
+                <div class="dropdown ms-auto">
+                    <button class="btn btn-link text-white dropdown-toggle d-flex align-items-center" 
+                            type="button" id="userMenu" data-bs-toggle="dropdown">
+                        <div class="me-2">
+                            <strong>{{ request.user.get_full_name|default:request.user.username }}</strong>
+                            <small class="d-block">{{ request.user.user_type|title }}</small>
+                        </div>
+                        <i class="fas fa-user-circle fa-2x"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'admin:index' %}">
+                                <i class="fas fa-cog me-2"></i>Django Admin
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'admin_dashboard' %}">
+                                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                           <a class="dropdown-item" href="{% url 'bika:user_profile' %}">
+                                <i class="fas fa-user me-2"></i>My Profile
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'bika:user_settings' %}">
+                                <i class="fas fa-sliders-h me-2"></i>Settings
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{% url 'bika:logout' %}"></a>
+                                <i class="fas fa-sign-out-alt me-2"></i>Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    
+    <!-- Admin Sidebar -->
+<aside class="admin-sidebar" id="admin-sidebar">
+    <ul class="sidebar-menu">
+        <!-- Dashboard -->
+        <li>
+            <a href="{% url 'admin_dashboard' %}" class="{% if request.path == '/admin/dashboard/' %}active{% endif %}">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Dashboard</span>
+            </a>
+        </li>
+        
+        <!-- AI & Analytics -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">AI & Analytics</small>
+        </li>
+        <li>
+            <a href="{% url 'ai_alert_dashboard' %}" class="{% if 'ai-alerts' in request.path %}active{% endif %}">
+                <i class="fas fa-robot"></i>
+                <span>AI Alerts Dashboard</span>
+                {% if alert_stats.unresolved_alerts %}
+                <span class="badge bg-danger ms-auto">{{ alert_stats.unresolved_alerts }}</span>
+                {% endif %}
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'model_management' %}" class="{% if 'model-management' in request.path %}active{% endif %}">
+                <i class="fas fa-brain"></i>
+                <span>Model Management</span>
+            </a>
+        </li>
+<li>
+    <a href="{% url 'bika:product_ai_insights_overview' %}" class="{% if 'product-ai-insights-overview' in request.path %}active{% endif %}">
+        <i class="fas fa-chart-line"></i>
+        <span>Product AI Insights</span>
+    </a>
+</li>
+        
+        <!-- Products -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Products</small>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_product_changelist' %}">
+                <i class="fas fa-box"></i>
+                <span>All Products</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_product_add' %}">
+                <i class="fas fa-plus-circle"></i>
+                <span>Add Product</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'bika:vendor_product_list' %}">
+                <i class="fas fa-store"></i>
+                <span>Vendor Products</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_productcategory_changelist' %}">
+                <i class="fas fa-tags"></i>
+                <span>Categories</span>
+            </a>
+        </li>
+        
+        <!-- Orders -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Orders</small>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_order_changelist' %}">
+                <i class="fas fa-shopping-cart"></i>
+                <span>All Orders</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_payment_changelist' %}">
+                <i class="fas fa-credit-card"></i>
+                <span>Payments</span>
+            </a>
+        </li>
+        
+        <!-- Users -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Users</small>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_customuser_changelist' %}">
+                <i class="fas fa-users"></i>
+                <span>All Users</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_customuser_add' %}">
+                <i class="fas fa-user-plus"></i>
+                <span>Add User</span>
+            </a>
+        </li>
+        
+        <!-- Fruit Monitoring -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Fruit Monitoring</small>
+        </li>
+        <li>
+            <a href="{% url 'bika:fruit_quality_dashboard' %}">
+                <i class="fas fa-apple-alt"></i>
+                <span>Quality Dashboard</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_fruitbatch_changelist' %}">
+                <i class="fas fa-layer-group"></i>
+                <span>Fruit Batches</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_fruitqualityreading_changelist' %}">
+                <i class="fas fa-chart-bar"></i>
+                <span>Quality Readings</span>
+            </a>
+        </li>
+        
+        <!-- Storage & Sensors -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Storage & Sensors</small>
+        </li>
+        <li>
+            <a href="{% url 'bika:storage_sites' %}">
+                <i class="fas fa-warehouse"></i>
+                <span>Storage Sites</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_realtimesensordata_changelist' %}">
+                <i class="fas fa-microchip"></i>
+                <span>Sensor Data</span>
+            </a>
+        </li>
+        
+        <!-- Content Management -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Content</small>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_service_changelist' %}">
+                <i class="fas fa-concierge-bell"></i>
+                <span>Services</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_testimonial_changelist' %}">
+                <i class="fas fa-comment"></i>
+                <span>Testimonials</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_contactmessage_changelist' %}">
+                <i class="fas fa-envelope"></i>
+                <span>Contact Messages</span>
+                {% if recent_messages %}
+                <span class="badge bg-warning ms-auto">{{ recent_messages.count }}</span>
+                {% endif %}
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_faq_changelist' %}">
+                <i class="fas fa-question-circle"></i>
+                <span>FAQs</span>
+            </a>
+        </li>
+        
+        <!-- System -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">System</small>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_siteinfo_changelist' %}">
+                <i class="fas fa-cog"></i>
+                <span>Site Settings</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_productalert_changelist' %}">
+                <i class="fas fa-bell"></i>
+                <span>Alerts</span>
+                {% if alert_stats.unresolved_alerts %}
+                <span class="badge bg-danger ms-auto">{{ alert_stats.unresolved_alerts }}</span>
+                {% endif %}
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'admin:bika_notification_changelist' %}">
+                <i class="fas fa-inbox"></i>
+                <span>Notifications</span>
+            </a>
+        </li>
+        
+        <!-- Tools -->
+        <li class="mt-3">
+            <small class="px-3 text-uppercase text-muted">Tools</small>
+        </li>
+        <li>
+            <a href="{% url 'generate_sample_data' %}">
+                <i class="fas fa-database"></i>
+                <span>Generate Sample Data</span>
+            </a>
+        </li>
+        <li>
+            <a href="{% url 'scan_products' %}">
+                <i class="fas fa-search"></i>
+                <span>Scan Products</span>
+            </a>
+        </li>
+    </ul>
+</aside>
+    
+    <!-- Main Content -->
+    <main class="admin-content" id="admin-content">
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 mb-1">{% block page_title %}Dashboard{% endblock %}</h1>
+                <p class="text-muted mb-0">{% block page_subtitle %}Welcome to Bika Admin Dashboard{% endblock %}</p>
+            </div>
+            <div>
+                {% block page_actions %}
+                <!-- Action buttons go here -->
+                {% endblock %}
+            </div>
+        </div>
+        
+        <!-- Breadcrumb -->
+        {% block breadcrumb %}
+        <nav aria-label="breadcrumb" class="mb-4">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+                {% block breadcrumb_items %}{% endblock %}
+            </ol>
+        </nav>
+        {% endblock %}
+        
+        <!-- Messages -->
+        {% if messages %}
+        <div class="messages mb-4">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-admin alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <!-- Main Content Block -->
+        <div class="fade-in">
+            {% block content %}
+            <!-- Page content goes here -->
+            {% endblock %}
+        </div>
+        
+        <!-- Footer -->
+        <footer class="admin-footer mt-5">
+            <div class="row">
+                <div class="col-md-6 text-start">
+                    <p class="mb-0">
+                        <i class="fas fa-seedling text-primary me-1"></i>
+                        Bika Admin v1.0 &copy; {% now "Y" %}
+                    </p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p class="mb-0">
+                        <span class="text-muted">Server Time:</span>
+                        <strong id="server-time">{% now "F j, Y, g:i a" %}</strong>
+                    </p>
+                </div>
+            </div>
+        </footer>
+    </main>
+    
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- DataTables JS -->
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!-- Custom Admin JS -->
+    <script>
+        // Sidebar Toggle
+        const sidebar = document.getElementById('admin-sidebar');
+        const content = document.getElementById('admin-content');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        
+        // Check localStorage for sidebar state
+        const isSidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        
+        if (isSidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+            content.classList.add('expanded');
+        }
+        
+        sidebarToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('collapsed');
+            content.classList.toggle('expanded');
+            
+            // Save state to localStorage
+            const isCollapsed = sidebar.classList.contains('collapsed');
+            localStorage.setItem('sidebarCollapsed', isCollapsed);
+        });
+        
+        // Mobile sidebar handling
+        if (window.innerWidth <= 992) {
+            sidebar.classList.remove('collapsed');
+            content.classList.remove('expanded');
+            
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('show');
+                sidebarOverlay.classList.toggle('show');
+            });
+            
+            sidebarOverlay.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarOverlay.classList.remove('show');
+            });
+        }
+        
+        // Update server time
+        function updateServerTime() {
+            const now = new Date();
+            const options = { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true 
+            };
+            document.getElementById('server-time').textContent = now.toLocaleDateString('en-US', options);
+        }
+        
+        // Update time every second
+        setInterval(updateServerTime, 1000);
+        
+        // Initialize DataTables
+        $(document).ready(function() {
+            $('.data-table').DataTable({
+                "pageLength": 25,
+                "language": {
+                    "lengthMenu": "Show _MENU_ entries",
+                    "zeroRecords": "No records found",
+                    "info": "Showing _START_ to _END_ of _TOTAL_ entries",
+                    "infoEmpty": "No entries available",
+                    "infoFiltered": "(filtered from _MAX_ total entries)",
+                    "search": "Search:",
+                    "paginate": {
+                        "first": "First",
+                        "last": "Last",
+                        "next": "Next",
+                        "previous": "Previous"
+                    }
+                }
+            });
+            
+            // Initialize Select2
+            $('.select2').select2({
+                theme: 'bootstrap-5',
+                width: '100%'
+            });
+            
+            // Auto-dismiss alerts after 5 seconds
+            setTimeout(function() {
+                $('.alert').alert('close');
+            }, 5000);
+            
+            // Loading spinner for AJAX requests
+            $(document).ajaxStart(function() {
+                $('#global-spinner').addClass('active');
+            });
+            
+            $(document).ajaxStop(function() {
+                $('#global-spinner').removeClass('active');
+            });
+        });
+        
+        // Confirm actions
+        function confirmAction(message) {
+            return confirm(message || 'Are you sure you want to perform this action?');
+        }
+        
+        // Toast notification
+        function showToast(title, message, type = 'info') {
+            // Implementation for toast notifications
+            console.log(`[${type}] ${title}: ${message}`);
+        }
+        
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Copied!', 'Text copied to clipboard', 'success');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                showToast('Error', 'Failed to copy text', 'error');
+            });
+        }
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

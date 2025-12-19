@@ -1,0 +1,89 @@
+<!-- bika/templates/bika/pages/admin/train_new_model.html -->
+{% extends 'bika/base_admin.html' %}
+{% load static %}
+
+{% block title %}Train New Model - Bika{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">
+        <i class="fas fa-brain mr-2"></i>Train New AI Model
+    </h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Upload Dataset</h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <div class="form-group">
+                            <label for="dataset_file">Dataset File (CSV)</label>
+                            <input type="file" class="form-control-file" id="dataset_file" name="dataset_file" required>
+                            <small class="form-text text-muted">
+                                Upload a CSV file with fruit quality data. Required columns: fruit_type, temperature, humidity, light_intensity, co2_level, quality_class
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="target_column">Target Column</label>
+                            <input type="text" class="form-control" id="target_column" name="target_column" value="quality_class">
+                            <small class="form-text text-muted">The column containing the quality labels (default: quality_class)</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="model_type">Model Type</label>
+                            <select class="form-control" id="model_type" name="model_type">
+                                <option value="random_forest">Random Forest</option>
+                                <option value="gradient_boosting">Gradient Boosting</option>
+                                <option value="xgboost">XGBoost</option>
+                                <option value="svm">Support Vector Machine</option>
+                            </select>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-play mr-2"></i>Train Model
+                        </button>
+                        <a href="{% url 'bika:generate_sample_data' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-database mr-2"></i>Generate Sample Data
+                        </a>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Instructions</h6>
+                </div>
+                <div class="card-body">
+                    <h6>Dataset Requirements:</h6>
+                    <ul>
+                        <li>CSV format with header row</li>
+                        <li>Minimum 100 samples recommended</li>
+                        <li>Required columns: fruit_type, temperature, humidity, light_intensity, co2_level</li>
+                        <li>Target column: quality_class (Fresh/Good/Fair/Poor/Rotten)</li>
+                    </ul>
+                    
+                    <h6>Training Process:</h6>
+                    <ol>
+                        <li>Upload your dataset</li>
+                        <li>5 different models will be trained</li>
+                        <li>Best model will be selected automatically</li>
+                        <li>Model will be activated for predictions</li>
+                    </ol>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Training may take several minutes depending on dataset size.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

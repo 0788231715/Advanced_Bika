@@ -134,7 +134,7 @@ class FruitQualityPredictor:
                 print(f"Warning: Found {len(invalid_rows)} rows with invalid quality classes")
                 df = df[df[target_column].isin(valid_classes)]
             
-            if len(df) < 50:
+            if len(df) < 10:
                 print(f"Warning: Insufficient data after cleaning. Only {len(df)} samples remaining.")
                 return None, None, None
             

@@ -5,6 +5,8 @@
 
 {% block extrahead %}
     {{ block.super }}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
         :root {
             --primary: #667eea;
@@ -62,6 +64,17 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             border: 1px solid rgba(0, 0, 0, 0.05);
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
         }
 
         .stat-card:hover {
@@ -70,14 +83,16 @@
         }
 
         /* Card Color Themes */
-        .stat-card.products { border-left: 4px solid #8b5cf6; }
-        .stat-card.users { border-left: 4px solid #f97316; }
-        .stat-card.vendors { border-left: 4px solid #6366f1; }
-        .stat-card.orders { border-left: 4px solid #84cc16; }
-        .stat-card.revenue { border-left: 4px solid #14b8a6; }
-        .stat-card.customers { border-left: 4px solid #f59e0b; }
-        .stat-card.admins { border-left: 4px solid #ef4444; }
-        .stat-card.categories { border-left: 4px solid #ec4899; }
+        .stat-card.products::before { background: #8b5cf6; }
+        .stat-card.users::before { background: #f97316; }
+        .stat-card.vendors::before { background: #6366f1; }
+        .stat-card.orders::before { background: #84cc16; }
+        .stat-card.revenue::before { background: #14b8a6; }
+        .stat-card.customers::before { background: #f59e0b; }
+        .stat-card.admins::before { background: #ef4444; }
+        .stat-card.categories::before { background: #ec4899; }
+        .stat-card.ai::before { background: #8b5cf6; }
+        .stat-card.predictions::before { background: #3b82f6; }
 
         .stat-icon {
             font-size: 2.5rem;
@@ -93,6 +108,8 @@
         .stat-card.customers .stat-icon { color: #f59e0b; }
         .stat-card.admins .stat-icon { color: #ef4444; }
         .stat-card.categories .stat-icon { color: #ec4899; }
+        .stat-card.ai .stat-icon { color: #8b5cf6; }
+        .stat-card.predictions .stat-icon { color: #3b82f6; }
 
         .stat-number {
             font-size: 2.2rem;
@@ -137,11 +154,12 @@
         .dashboard-card {
             background: white;
             border-radius: 12px;
-            padding: 20px;
+            padding: 25px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             border: 1px solid rgba(0, 0, 0, 0.05);
             margin-bottom: 25px;
             transition: transform 0.3s ease;
+            height: 100%;
         }
 
         .dashboard-card:hover {
@@ -171,44 +189,263 @@
             color: var(--primary);
         }
 
-        /* User Statistics Grid */
-        .user-stats-grid {
+        /* AI Status Grid */
+        .ai-status-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 15px;
             margin-top: 15px;
         }
 
-        .user-stat-card {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        .ai-status-item {
+            background: white;
             border-radius: 10px;
-            padding: 15px;
+            padding: 20px;
             text-align: center;
-            border: 1px solid #e2e8f0;
+            border: 2px solid #e2e8f0;
             transition: all 0.3s ease;
         }
 
-        .user-stat-card:hover {
+        .ai-status-item:hover {
             transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
         }
 
-        .user-stat-number {
+        .ai-status-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            color: var(--primary);
+        }
+
+        .ai-status-title {
+            font-size: 0.9rem;
+            color: var(--gray);
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .ai-status-value {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--dark);
+        }
+
+        /* Performance Metrics */
+        .performance-metrics {
+            padding: 10px 0;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 0.9rem;
+        }
+
+        .metric-value {
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--dark);
+        }
+
+        .metric-status {
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .status-good { background: #d1fae5; color: #065f46; }
+        .status-warning { background: #fef3c7; color: #92400e; }
+        .status-critical { background: #fee2e2; color: #991b1b; }
+
+        /* Alerts List */
+        .alerts-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 0 -10px;
+            padding: 0 10px;
+        }
+
+        .alert-item {
+            padding: 12px;
+            border-left: 4px solid;
+            background: #f8fafc;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .alert-item:hover {
+            transform: translateX(3px);
+            background: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .alert-critical { border-left-color: #ef4444; background: #fef2f2; }
+        .alert-high { border-left-color: #f97316; background: #fff7ed; }
+        .alert-medium { border-left-color: #f59e0b; background: #fffbeb; }
+        .alert-low { border-left-color: #3b82f6; background: #eff6ff; }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 5px;
+        }
+
+        .alert-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--dark);
+            margin: 0;
+        }
+
+        .alert-time {
+            font-size: 0.75rem;
+            color: var(--gray);
+        }
+
+        .alert-message {
+            font-size: 0.85rem;
+            color: var(--gray);
+            margin-bottom: 5px;
+        }
+
+        .alert-product {
+            font-size: 0.8rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* Inventory Dashboard */
+        .inventory-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        @media (min-width: 768px) {
+            .inventory-stats {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        .inventory-stat {
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            transition: transform 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .inventory-stat:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .inventory-stat.bg-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .inventory-stat.bg-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        .inventory-stat.bg-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .inventory-stat.bg-info { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); }
+
+        .inventory-number {
             font-size: 2rem;
             font-weight: 800;
             margin-bottom: 5px;
         }
 
-        .user-stat-label {
+        .inventory-label {
             font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        /* User Distribution */
+        .user-distribution {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        @media (min-width: 576px) {
+            .user-distribution {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        .user-dist-item {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            background: #f8fafc;
+            transition: all 0.3s ease;
+            border: 1px solid #e2e8f0;
+        }
+
+        .user-dist-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-dist-icon {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .user-dist-number {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+            color: var(--dark);
+        }
+
+        .user-dist-label {
+            font-size: 0.8rem;
             color: var(--gray);
             font-weight: 600;
         }
 
-        .user-stat-admins { border-left: 4px solid #ef4444; }
-        .user-stat-vendors { border-left: 4px solid #6366f1; }
-        .user-stat-customers { border-left: 4px solid #f59e0b; }
-        .user-stat-total { border-left: 4px solid #10b981; }
+        .user-dist-percentage {
+            font-size: 0.75rem;
+            color: var(--gray);
+            margin-top: 4px;
+        }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 15px;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .chart-controls select {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            font-size: 0.85rem;
+        }
 
         /* Products Grid */
         .products-grid {
@@ -243,6 +480,11 @@
             border-radius: 8px;
             object-fit: cover;
             margin-right: 12px;
+            background: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
         }
 
         .product-info {
@@ -284,8 +526,11 @@
             transition: all 0.3s ease;
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             font-size: 0.85rem;
+            cursor: pointer;
         }
 
         .btn-modern:hover {
@@ -293,6 +538,23 @@
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
             color: white;
             text-decoration: none;
+        }
+
+        .btn-modern.btn-sm {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+
+        .btn-modern.btn-outline {
+            background: white;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+            box-shadow: none;
+        }
+
+        .btn-modern.btn-outline:hover {
+            background: var(--primary);
+            color: white;
         }
 
         /* Quick Actions */
@@ -399,44 +661,6 @@
             backdrop-filter: blur(10px);
         }
 
-        /* User Distribution */
-        .user-distribution {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-top: 15px;
-        }
-
-        .user-dist-item {
-            text-align: center;
-            padding: 12px;
-            border-radius: 10px;
-            background: #f8fafc;
-            transition: all 0.3s ease;
-        }
-
-        .user-dist-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .user-dist-icon {
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-        }
-
-        .user-dist-number {
-            font-size: 1.2rem;
-            font-weight: 800;
-            margin-bottom: 4px;
-        }
-
-        .user-dist-label {
-            font-size: 0.75rem;
-            color: var(--gray);
-            font-weight: 600;
-        }
-
         /* Activity List */
         .activity-list {
             list-style: none;
@@ -539,11 +763,130 @@
             font-size: 0.8rem;
             line-height: 1.3;
         }
+
+        /* Recent Orders Table */
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .orders-table th {
+            text-align: left;
+            padding: 12px;
+            background: #f8fafc;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 0.85rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .orders-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.85rem;
+        }
+
+        .orders-table tr:hover {
+            background: #f8fafc;
+        }
+
+        .order-status {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .order-pending { background: #fef3c7; color: #92400e; }
+        .order-confirmed { background: #dbeafe; color: #1e40af; }
+        .order-shipped { background: #e0e7ff; color: #3730a3; }
+        .order-delivered { background: #d1fae5; color: #065f46; }
+        .order-cancelled { background: #fee2e2; color: #991b1b; }
+
+        /* Loading States */
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transform: translateX(150%);
+            transition: transform 0.3s ease;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast-success {
+            border-left: 4px solid var(--success);
+        }
+
+        .toast-error {
+            border-left: 4px solid var(--danger);
+        }
+
+        .toast-info {
+            border-left: 4px solid var(--info);
+        }
+
+        .toast-icon {
+            font-size: 1.2rem;
+        }
+
+        .toast-success .toast-icon { color: var(--success); }
+        .toast-error .toast-icon { color: var(--danger); }
+        .toast-info .toast-icon { color: var(--info); }
+
+        .toast-message {
+            flex: 1;
+            font-size: 0.9rem;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: var(--gray);
+            cursor: pointer;
+            font-size: 1rem;
+        }
     </style>
 {% endblock %}
 
 {% block content %}
 <div class="dashboard-container">
+    <!-- Toast Container -->
+    <div id="toastContainer"></div>
+
     <!-- Dashboard Header -->
     <div class="dashboard-header">
         <div class="container-fluid">
@@ -632,27 +975,27 @@
                 </div>
             </div>
 
-            <!-- Customer Statistics -->
-            <div class="stat-card customers">
+            <!-- AI System Statistics -->
+            <div class="stat-card ai">
                 <div class="stat-icon">
-                    <i class="fas fa-user-friends"></i>
+                    <i class="fas fa-robot"></i>
                 </div>
-                <div class="stat-number">{{ total_customers|default:"0" }}</div>
-                <div class="stat-label">Total Customers</div>
-                <div class="stat-trend trend-up">
-                    <i class="fas fa-shopping-bag me-1"></i>{{ total_customers|default:"0" }} active
+                <div class="stat-number">{{ critical_alerts|default:"0" }}</div>
+                <div class="stat-label">Critical Alerts</div>
+                <div class="stat-trend trend-down">
+                    <i class="fas fa-exclamation-triangle me-1"></i>AI Monitoring Active
                 </div>
             </div>
 
-            <!-- Admin Statistics -->
-            <div class="stat-card admins">
+            <!-- Predictions Statistics -->
+            <div class="stat-card predictions">
                 <div class="stat-icon">
-                    <i class="fas fa-user-shield"></i>
+                    <i class="fas fa-brain"></i>
                 </div>
-                <div class="stat-number">{{ total_admins|default:"0" }}</div>
-                <div class="stat-label">System Admins</div>
-                <div class="stat-trend">
-                    <i class="fas fa-cog me-1"></i>{{ total_admins|default:"0" }} active
+                <div class="stat-number">{{ total_predictions|default:"0" }}</div>
+                <div class="stat-label">AI Predictions</div>
+                <div class="stat-trend trend-up">
+                    <i class="fas fa-database me-1"></i>{{ dataset_size|default:"0" }} dataset
                 </div>
             </div>
 
@@ -673,87 +1016,75 @@
         <div class="dashboard-grid">
             <!-- Left Column -->
             <div class="left-column">
-                <!-- User Statistics Breakdown -->
+                <!-- Sales Analytics Chart -->
                 <div class="dashboard-card">
                     <div class="card-header">
                         <h3 class="card-title">
-                            <i class="fas fa-chart-pie"></i>User Statistics
+                            <i class="fas fa-chart-line"></i>Sales Analytics
                         </h3>
-                        <a href="/admin/bika/customuser/" class="btn btn-modern">
-                            Manage Users
-                        </a>
+                        <div class="chart-controls">
+                            <select id="chartPeriod" onchange="loadSalesChart(this.value)">
+                                <option value="7">Last 7 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                            <button class="btn-modern btn-sm" onclick="exportSalesReport()">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="salesChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Inventory Status Dashboard -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-boxes"></i>Inventory Status
+                        </h3>
+                        <button class="btn-modern btn-sm" onclick="exportInventoryReport()">
+                            <i class="fas fa-download"></i> Export Report
+                        </button>
                     </div>
                     
-                    <div class="user-stats-grid">
-                        <div class="user-stat-card user-stat-total">
-                            <div class="user-stat-number">{{ total_users|default:"0" }}</div>
-                            <div class="user-stat-label">Total Users</div>
-                            <div class="text-muted small mt-1">
-                                <i class="fas fa-users me-1"></i>All Platform Users
-                            </div>
+                    <div class="inventory-stats">
+                        <div class="inventory-stat bg-success">
+                            <div class="inventory-number">{{ active_products|default:"0" }}</div>
+                            <div class="inventory-label">In Stock</div>
                         </div>
-                        
-                        <div class="user-stat-card user-stat-admins">
-                            <div class="user-stat-number">{{ total_admins|default:"0" }}</div>
-                            <div class="user-stat-label">Administrators</div>
-                            <div class="text-muted small mt-1">
-                                <i class="fas fa-user-shield me-1"></i>System Managers
-                            </div>
+                        <div class="inventory-stat bg-warning">
+                            <div class="inventory-number">{{ low_stock|default:"0" }}</div>
+                            <div class="inventory-label">Low Stock</div>
                         </div>
-                        
-                        <div class="user-stat-card user-stat-vendors">
-                            <div class="user-stat-number">{{ total_vendors|default:"0" }}</div>
-                            <div class="user-stat-label">Vendors</div>
-                            <div class="text-muted small mt-1">
-                                <i class="fas fa-store me-1"></i>Product Sellers
-                            </div>
+                        <div class="inventory-stat bg-danger">
+                            <div class="inventory-number">{{ out_of_stock|default:"0" }}</div>
+                            <div class="inventory-label">Out of Stock</div>
                         </div>
-                        
-                        <div class="user-stat-card user-stat-customers">
-                            <div class="user-stat-number">{{ total_customers|default:"0" }}</div>
-                            <div class="user-stat-label">Customers</div>
-                            <div class="text-muted small mt-1">
-                                <i class="fas fa-shopping-bag me-1"></i>Buyers
-                            </div>
+                        <div class="inventory-stat bg-info">
+                            <div class="inventory-number">{{ draft_products|default:"0" }}</div>
+                            <div class="inventory-label">Draft Products</div>
                         </div>
                     </div>
-
-                    <!-- User Distribution Chart -->
+                    
                     <div class="mt-3">
-                        <h6 class="mb-2 fw-bold">User Distribution Overview</h6>
-                        <div class="user-distribution">
-                            <div class="user-dist-item">
-                                <div class="user-dist-icon text-danger">
-                                    <i class="fas fa-user-shield"></i>
-                                </div>
-                                <div class="user-dist-number">{{ total_admins|default:"0" }}</div>
-                                <div class="user-dist-label">Admins</div>
-                                <div class="text-muted small mt-1">{{ admin_percentage|default:"0" }}%</div>
-                            </div>
-                            <div class="user-dist-item">
-                                <div class="user-dist-icon text-primary">
-                                    <i class="fas fa-store"></i>
-                                </div>
-                                <div class="user-dist-number">{{ total_vendors|default:"0" }}</div>
-                                <div class="user-dist-label">Vendors</div>
-                                <div class="text-muted small mt-1">{{ vendor_percentage|default:"0" }}%</div>
-                            </div>
-                            <div class="user-dist-item">
-                                <div class="user-dist-icon text-warning">
-                                    <i class="fas fa-user-friends"></i>
-                                </div>
-                                <div class="user-dist-number">{{ total_customers|default:"0" }}</div>
-                                <div class="user-dist-label">Customers</div>
-                                <div class="text-muted small mt-1">{{ customer_percentage|default:"0" }}%</div>
-                            </div>
-                            <div class="user-dist-item">
-                                <div class="user-dist-icon text-success">
-                                    <i class="fas fa-users"></i>
-                                </div>
-                                <div class="user-dist-number">{{ total_users|default:"0" }}</div>
-                                <div class="user-dist-label">Total</div>
-                                <div class="text-muted small mt-1">100%</div>
-                            </div>
+                        <h6 class="fw-bold mb-2">Stock Health</h6>
+                        <div class="progress" style="height: 20px; border-radius: 10px;">
+                            <div class="progress-bar bg-success" style="width: {% widthratio active_products total_products 100 %}%"></div>
+                            <div class="progress-bar bg-warning" style="width: {% widthratio low_stock total_products 100 %}%"></div>
+                            <div class="progress-bar bg-danger" style="width: {% widthratio out_of_stock total_products 100 %}%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <small class="text-success">
+                                <i class="fas fa-circle me-1"></i> In Stock: {{ active_products|default:"0" }}
+                            </small>
+                            <small class="text-warning">
+                                <i class="fas fa-circle me-1"></i> Low Stock: {{ low_stock|default:"0" }}
+                            </small>
+                            <small class="text-danger">
+                                <i class="fas fa-circle me-1"></i> Out of Stock: {{ out_of_stock|default:"0" }}
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -764,7 +1095,7 @@
                         <h3 class="card-title">
                             <i class="fas fa-cube"></i>Recent Products
                         </h3>
-                        <a href="/admin/bika/product/" class="btn btn-modern">
+                        <a href="/admin/bika/product/" class="btn-modern">
                             Manage Products
                         </a>
                     </div>
@@ -776,8 +1107,8 @@
                                 {% if product.images.first %}
                                 <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="product-image">
                                 {% else %}
-                                <div class="product-image bg-light d-flex align-items-center justify-content-center rounded">
-                                    <i class="fas fa-cube text-muted"></i>
+                                <div class="product-image">
+                                    <i class="fas fa-cube"></i>
                                 </div>
                                 {% endif %}
                                 <div class="product-info">
@@ -804,49 +1135,174 @@
                     {% endif %}
                 </div>
 
-                <!-- Recent Messages -->
+                <!-- Recent Orders Table -->
                 <div class="dashboard-card">
                     <div class="card-header">
                         <h3 class="card-title">
-                            <i class="fas fa-envelope"></i>Recent Messages
+                            <i class="fas fa-receipt"></i>Recent Orders
                         </h3>
-                        <a href="/admin/bika/contactmessage/" class="btn btn-modern">
-                            View All
+                        <a href="/admin/bika/order/" class="btn-modern">
+                            View All Orders
                         </a>
                     </div>
-
-                    {% if recent_messages %}
-                        <div class="messages-list">
-                            {% for message in recent_messages %}
-                            <a href="/admin/bika/contactmessage/{{ message.id }}/change/" class="message-item">
-                                <div class="message-header">
-                                    <div class="message-sender">
-                                        {{ message.name }}
-                                        <span class="badge bg-warning text-dark ms-1">NEW</span>
-                                    </div>
-                                    <div class="message-time">
-                                        {{ message.submitted_at|timesince }} ago
-                                    </div>
-                                </div>
-                                <div class="message-subject">{{ message.subject }}</div>
-                                <div class="message-preview">
-                                    {{ message.message|truncatewords:15 }}
-                                </div>
-                            </a>
+                    
+                    <table class="orders-table">
+                        <thead>
+                            <tr>
+                                <th>Order #</th>
+                                <th>Customer</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in recent_orders %}
+                            <tr>
+                                <td><strong>#{{ order.order_number }}</strong></td>
+                                <td>{{ order.user.username }}</td>
+                                <td>{{ order.created_at|date:"M d" }}</td>
+                                <td>${{ order.total_amount }}</td>
+                                <td>
+                                    <span class="order-status order-{{ order.status }}">
+                                        {{ order.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{% url 'bika:order_detail' order.id %}" 
+                                       class="btn-modern btn-sm">
+                                        <i class="fas fa-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4">
+                                    No orders yet
+                                </td>
+                            </tr>
                             {% endfor %}
-                        </div>
-                    {% else %}
-                        <div class="empty-state">
-                            <i class="fas fa-inbox"></i>
-                            <h4>No New Messages</h4>
-                            <p>Contact messages from your website will appear here.</p>
-                        </div>
-                    {% endif %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
             <!-- Right Column -->
             <div class="right-column">
+                <!-- Alert & Notification Center -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-bell"></i>Active Alerts
+                            <span class="badge bg-danger ms-2" id="alertCount">0</span>
+                        </h3>
+                        <button class="btn-modern btn-sm" onclick="markAllAlertsRead()">
+                            <i class="fas fa-check-double"></i> Mark All Read
+                        </button>
+                    </div>
+                    <div id="alertsContainer" class="alerts-list">
+                        <!-- Dynamic alerts will load here -->
+                        <div class="text-center py-4">
+                            <div class="loading-spinner"></div>
+                            <p class="mt-2 text-muted">Loading alerts...</p>
+                        </div>
+                    </div>
+                    <div class="text-center py-2">
+                        <a href="{% url 'bika:ai_alert_dashboard' %}" class="text-decoration-none">
+                            View All Alerts <i class="fas fa-arrow-right ms-1"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- AI System Status -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-robot"></i>AI System Status
+                        </h3>
+                        <a href="{% url 'bika:model_management' %}" class="btn-modern btn-sm">
+                            Manage Models
+                        </a>
+                    </div>
+                    <div class="ai-status-grid">
+                        <div class="ai-status-item {% if ai_service.active_model %}bg-success-light{% else %}bg-warning-light{% endif %}">
+                            <div class="ai-status-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <div class="ai-status-title">Active Model</div>
+                            <div class="ai-status-value">
+                                {% if ai_service.active_model %}
+                                    {{ ai_service.active_model.record.name|truncatechars:15 }}
+                                {% else %}
+                                    None
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="ai-status-item bg-info-light">
+                            <div class="ai-status-icon">
+                                <i class="fas fa-chart-bar"></i>
+                            </div>
+                            <div class="ai-status-title">Total Predictions</div>
+                            <div class="ai-status-value">{{ total_predictions|default:"0" }}</div>
+                        </div>
+                        <div class="ai-status-item bg-danger-light">
+                            <div class="ai-status-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="ai-status-title">Critical Alerts</div>
+                            <div class="ai-status-value">{{ critical_alerts|default:"0" }}</div>
+                        </div>
+                        <div class="ai-status-item bg-primary-light">
+                            <div class="ai-status-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div class="ai-status-title">Dataset Size</div>
+                            <div class="ai-status-value">{{ dataset_size|default:"0" }}</div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn-modern btn-outline w-100" onclick="scanProductsForAlerts()">
+                            <i class="fas fa-search me-1"></i> Scan Products for AI Alerts
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Performance Metrics -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-tachometer-alt"></i>Performance Metrics
+                        </h3>
+                        <span class="badge bg-success" id="metricsStatus">Live</span>
+                    </div>
+                    <div class="performance-metrics">
+                        <div class="metric-row">
+                            <span class="metric-label">Response Time</span>
+                            <span class="metric-value" id="responseTime">0.24s</span>
+                            <span class="metric-status status-good">Good</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Server Load</span>
+                            <span class="metric-value" id="serverLoad">42%</span>
+                            <span class="metric-status status-good">Normal</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Memory Usage</span>
+                            <span class="metric-value" id="memoryUsage">1.2GB</span>
+                            <span class="metric-status status-warning">Medium</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Database Queries</span>
+                            <span class="metric-value" id="dbQueries">12/min</span>
+                            <span class="metric-status status-good">Optimal</span>
+                        </div>
+                    </div>
+                    <div class="text-center mt-2">
+                        <small class="text-muted" id="metricsTimestamp">Last updated: {% now "H:i" %}</small>
+                    </div>
+                </div>
+
                 <!-- Quick Actions -->
                 <div class="dashboard-card">
                     <div class="card-header">
@@ -899,6 +1355,49 @@
                     </div>
                 </div>
 
+                <!-- User Statistics -->
+                <div class="dashboard-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-chart-pie"></i>User Distribution
+                        </h3>
+                    </div>
+                    <div class="user-distribution">
+                        <div class="user-dist-item">
+                            <div class="user-dist-icon text-danger">
+                                <i class="fas fa-user-shield"></i>
+                            </div>
+                            <div class="user-dist-number">{{ total_admins|default:"0" }}</div>
+                            <div class="user-dist-label">Admins</div>
+                            <div class="user-dist-percentage">{{ admin_percentage|default:"0" }}%</div>
+                        </div>
+                        <div class="user-dist-item">
+                            <div class="user-dist-icon text-primary">
+                                <i class="fas fa-store"></i>
+                            </div>
+                            <div class="user-dist-number">{{ total_vendors|default:"0" }}</div>
+                            <div class="user-dist-label">Vendors</div>
+                            <div class="user-dist-percentage">{{ vendor_percentage|default:"0" }}%</div>
+                        </div>
+                        <div class="user-dist-item">
+                            <div class="user-dist-icon text-warning">
+                                <i class="fas fa-user-friends"></i>
+                            </div>
+                            <div class="user-dist-number">{{ total_customers|default:"0" }}</div>
+                            <div class="user-dist-label">Customers</div>
+                            <div class="user-dist-percentage">{{ customer_percentage|default:"0" }}%</div>
+                        </div>
+                        <div class="user-dist-item">
+                            <div class="user-dist-icon text-success">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="user-dist-number">{{ total_users|default:"0" }}</div>
+                            <div class="user-dist-label">Total</div>
+                            <div class="user-dist-percentage">100%</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- System Information -->
                 <div class="dashboard-card">
                     <div class="card-header">
@@ -925,104 +1424,11 @@
                             <span class="info-label">Server Time</span>
                             <span class="info-value">{% now "g:i a" %}</span>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Quick Stats -->
-                <div class="dashboard-card">
-                    <div class="card-header">
-                        <h3 class="card-title">
-                            <i class="fas fa-chart-bar"></i>Quick Stats
-                        </h3>
-                    </div>
-                    <div class="system-info">
                         <div class="info-item">
-                            <span class="info-label">Active Products</span>
-                            <span class="info-value">{{ active_products|default:"0" }}/{{ total_products|default:"0" }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Active Vendors</span>
-                            <span class="info-value">{{ active_vendors|default:"0" }}/{{ total_vendors|default:"0" }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Pending Orders</span>
-                            <span class="info-value">{{ pending_orders|default:"0" }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Today's Revenue</span>
-                            <span class="info-value">${{ today_revenue|default:"0" }}</span>
+                            <span class="info-label">Active Users</span>
+                            <span class="info-value">{{ active_users|default:"0" }}</span>
                         </div>
                     </div>
-                </div>
-
-                <!-- Recent Activity -->
-                <div class="dashboard-card">
-                    <div class="card-header">
-                        <h3 class="card-title">
-                            <i class="fas fa-history"></i>Recent Activity
-                        </h3>
-                    </div>
-                    <ul class="activity-list">
-                        <li class="activity-item">
-                            <div class="activity-icon">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div class="activity-content">
-                                <div class="activity-text">
-                                    You logged in to the admin panel
-                                </div>
-                                <div class="activity-time">
-                                    Just now
-                                </div>
-                            </div>
-                        </li>
-
-                        {% if recent_products %}
-                        <li class="activity-item">
-                            <div class="activity-icon">
-                                <i class="fas fa-cube"></i>
-                            </div>
-                            <div class="activity-content">
-                                <div class="activity-text">
-                                    {{ recent_products|length }} new product{{ recent_products|length|pluralize }} added
-                                </div>
-                                <div class="activity-time">
-                                    Today
-                                </div>
-                            </div>
-                        </li>
-                        {% endif %}
-
-                        {% if recent_messages %}
-                        <li class="activity-item">
-                            <div class="activity-icon">
-                                <i class="fas fa-envelope"></i>
-                            </div>
-                            <div class="activity-content">
-                                <div class="activity-text">
-                                    {{ recent_messages|length }} new message{{ recent_messages|length|pluralize }} received
-                                </div>
-                                <div class="activity-time">
-                                    Today
-                                </div>
-                            </div>
-                        </li>
-                        {% endif %}
-
-                        <li class="activity-item">
-                            <div class="activity-icon">
-                                <i class="fas fa-chart-line"></i>
-                            </div>
-                            <div class="activity-content">
-                                <div class="activity-text">
-                                    Platform performance is optimal
-                                </div>
-                                <div class="activity-time">
-                                    Last checked: {% now "H:i" %}
-                                </div>
-                            </div>
-                        </li>
-                    </ul>
                 </div>
             </div>
         </div>
@@ -1034,16 +1440,66 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🎯 Bika Admin Dashboard Loaded');
-
-    // Add smooth animations for stat cards
-    const statCards = document.querySelectorAll('.stat-card');
-    statCards.forEach((card, index) => {
+    
+    // Initialize components
+    initializeSalesChart();
+    loadAlerts();
+    updatePerformanceMetrics();
+    
+    // Real-time updates
+    setInterval(loadAlerts, 30000); // Update alerts every 30 seconds
+    setInterval(updatePerformanceMetrics, 60000); // Update metrics every minute
+    setInterval(updateClock, 60000); // Update clock every minute
+    
+    // Toast notification system
+    window.showToast = function(message, type = 'info') {
+        const toastContainer = document.getElementById('toastContainer');
+        const toastId = 'toast-' + Date.now();
+        
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.id = toastId;
+        
+        const icons = {
+            'success': 'fa-check-circle',
+            'error': 'fa-exclamation-circle',
+            'info': 'fa-info-circle'
+        };
+        
+        toast.innerHTML = `
+            <div class="toast-icon">
+                <i class="fas ${icons[type] || 'fa-info-circle'}"></i>
+            </div>
+            <div class="toast-message">${message}</div>
+            <button class="toast-close" onclick="closeToast('${toastId}')">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        toastContainer.appendChild(toast);
+        
+        // Show toast
         setTimeout(() => {
-            card.style.transition = 'all 0.4s ease';
-        }, index * 100);
-    });
-
-    // Real-time clock update
+            toast.classList.add('show');
+        }, 100);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            closeToast(toastId);
+        }, 5000);
+    };
+    
+    window.closeToast = function(toastId) {
+        const toast = document.getElementById(toastId);
+        if (toast) {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        }
+    };
+    
+    // Update clock function
     function updateClock() {
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-US', { 
@@ -1051,16 +1507,322 @@ document.addEventListener('DOMContentLoaded', function() {
             hour: 'numeric', 
             minute: '2-digit'
         });
-        const clockElements = document.querySelectorAll('.activity-time');
+        const clockElements = document.querySelectorAll('.info-value');
         clockElements.forEach(element => {
-            if (element.textContent.includes('Last checked')) {
-                element.textContent = `Last checked: ${timeString}`;
+            if (element.textContent.includes('AM') || element.textContent.includes('PM')) {
+                element.textContent = timeString;
             }
         });
     }
     
-    // Update clock every minute
-    setInterval(updateClock, 60000);
+    // Sales Chart
+    let salesChart = null;
+    
+    function initializeSalesChart() {
+        const ctx = document.getElementById('salesChart').getContext('2d');
+        salesChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Daily Sales',
+                    data: [],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            borderDash: [5, 5]
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Load initial data
+        loadSalesChart(30);
+    }
+    
+    window.loadSalesChart = function(days) {
+        fetch(`/api/dashboard/sales-analytics/?days=${days}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    salesChart.data.labels = data.sales_data.map(item => item.date);
+                    salesChart.data.datasets[0].data = data.sales_data.map(item => item.sales);
+                    salesChart.update();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading sales data:', error);
+                showToast('Error loading sales data', 'error');
+            });
+    };
+    
+    window.exportSalesReport = function() {
+        fetch('/api/dashboard/export-sales/')
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sales-report-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showToast('Sales report exported successfully', 'success');
+            })
+            .catch(error => {
+                console.error('Error exporting sales report:', error);
+                showToast('Error exporting sales report', 'error');
+            });
+    };
+    
+    // Alerts System
+    function loadAlerts() {
+        fetch('/api/dashboard/alerts/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateAlertsList(data.alerts);
+                    document.getElementById('alertCount').textContent = data.count;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading alerts:', error);
+            });
+    }
+    
+    function updateAlertsList(alerts) {
+        const container = document.getElementById('alertsContainer');
+        
+        if (alerts.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state py-4">
+                    <i class="fas fa-check-circle fa-2x mb-3 text-success"></i>
+                    <h5>No Active Alerts</h5>
+                    <p class="text-muted">All systems are operating normally.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        alerts.forEach(alert => {
+            const severityClass = `alert-${alert.severity}`;
+            const timeAgo = formatTimeAgo(alert.created_at);
+            
+            html += `
+                <div class="alert-item ${severityClass}" onclick="viewAlert(${alert.id})">
+                    <div class="alert-header">
+                        <div class="alert-title">${alert.title}</div>
+                        <div class="alert-time">${timeAgo}</div>
+                    </div>
+                    <div class="alert-message">${alert.message}</div>
+                    <div class="alert-product">
+                        <i class="fas fa-cube me-1"></i>${alert.product}
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    function formatTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        return `${diffDays}d ago`;
+    }
+    
+    window.viewAlert = function(alertId) {
+        window.location.href = `/admin/bika/productalert/${alertId}/change/`;
+    };
+    
+    window.markAllAlertsRead = function() {
+        if (confirm('Mark all alerts as read?')) {
+            fetch('/api/alerts/mark-all-read/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`Marked ${data.updated_count} alerts as read`, 'success');
+                    loadAlerts();
+                }
+            })
+            .catch(error => {
+                console.error('Error marking alerts as read:', error);
+                showToast('Error marking alerts as read', 'error');
+            });
+        }
+    };
+    
+    // Performance Metrics
+    function updatePerformanceMetrics() {
+        fetch('/api/dashboard/performance/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('responseTime').textContent = data.response_time + 's';
+                    document.getElementById('serverLoad').textContent = data.server_load;
+                    document.getElementById('memoryUsage').textContent = data.memory_usage;
+                    document.getElementById('dbQueries').textContent = data.db_queries;
+                    document.getElementById('metricsTimestamp').textContent = 
+                        `Last updated: ${data.timestamp.split(' ')[1]}`;
+                    
+                    // Update status badges
+                    updateStatusBadges(data);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading performance metrics:', error);
+            });
+    }
+    
+    function updateStatusBadges(data) {
+        // Update status based on metrics
+        const responseTime = parseFloat(data.response_time);
+        const serverLoad = parseInt(data.server_load);
+        
+        const responseStatus = responseTime < 0.5 ? 'status-good' : 
+                               responseTime < 1 ? 'status-warning' : 'status-critical';
+        const loadStatus = serverLoad < 70 ? 'status-good' : 
+                          serverLoad < 85 ? 'status-warning' : 'status-critical';
+        
+        document.querySelector('#responseTime + .metric-status').className = 
+            `metric-status ${responseStatus}`;
+        document.querySelector('#serverLoad + .metric-status').className = 
+            `metric-status ${loadStatus}`;
+    }
+    
+    // Inventory Export
+    window.exportInventoryReport = function() {
+        fetch('/api/dashboard/export-inventory/')
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `inventory-report-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showToast('Inventory report exported successfully', 'success');
+            })
+            .catch(error => {
+                console.error('Error exporting inventory report:', error);
+                showToast('Error exporting inventory report', 'error');
+            });
+    };
+    
+    // AI Product Scanning
+    window.scanProductsForAlerts = function() {
+        if (confirm('This will scan all products for quality issues. Continue?')) {
+            const button = event.target;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<div class="loading-spinner"></div> Scanning...';
+            button.disabled = true;
+            
+            fetch('{% url "bika:scan_products" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                button.innerHTML = originalText;
+                button.disabled = false;
+                
+                if (data.success) {
+                    showToast(
+                        `Scanned ${data.results.scanned} products. Generated ${data.results.alerts_generated} alerts.`,
+                        'success'
+                    );
+                    loadAlerts();
+                } else {
+                    showToast('Error scanning products: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error scanning products:', error);
+                button.innerHTML = originalText;
+                button.disabled = false;
+                showToast('Error scanning products', 'error');
+            });
+        }
+    };
+    
+    // Utility function to get CSRF token
+    function getCsrfToken() {
+        const name = 'csrftoken';
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    // Add loading state helper
+    function setLoading(element, isLoading) {
+        if (isLoading) {
+            element.classList.add('loading');
+            element.innerHTML = '<div class="loading-spinner"></div> Loading...';
+        } else {
+            element.classList.remove('loading');
+        }
+    }
 });
 </script>
 {% endblock %}

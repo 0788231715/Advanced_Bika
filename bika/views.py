@@ -5,7 +5,11 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-
+from bika.services.ai_service import enhanced_ai_service
+import joblib
+from sklearn.preprocessing import LabelEncoder
+from django.core.files.storage import default_storage
+import tempfile
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.contrib import messages
@@ -42,59 +46,7 @@ from .forms import (
 )
 
 # Import services
-class SimpleFruitAIService:
-    def __init__(self):
-        print("Simple Fruit AI Service initialized")
-    
-    def train_fruit_quality_model(self, csv_file, model_type='random_forest'):
-        """Simulate training"""
-        return {
-            'success': True,
-            'message': 'Training simulation complete',
-            'accuracy': 0.85,
-            'training_samples': 1000,
-            'model_type': model_type
-        }
-    
-    def predict_fruit_quality(self, fruit_name, temperature, humidity, 
-                            light_intensity, co2_level, batch_id=None):
-        """Simple rule-based prediction"""
-        # Simple rules
-        quality_score = 80
-        
-        if 2 <= temperature <= 8 and 85 <= humidity <= 95:
-            predicted_class = 'Good'
-            confidence = 0.8
-        elif temperature < 2 or temperature > 12:
-            predicted_class = 'Poor'
-            confidence = 0.7
-        else:
-            predicted_class = 'Fair'
-            confidence = 0.6
-        
-        return {
-            'success': True,
-            'prediction': {
-                'predicted_class': predicted_class,
-                'confidence': confidence,
-                'quality_score': quality_score,
-                'recommendations': ['Maintain optimal storage conditions']
-            }
-        }
-    
-    def get_batch_quality_report(self, batch_id, hours=24):
-        """Generate batch report"""
-        return {
-            'success': True,
-            'report': {
-                'batch_id': batch_id,
-                'quality': 'Good',
-                'recommendations': ['Continue monitoring']
-            }
-        }
 
-# Create global instance
-fruit_ai_service = SimpleFruitAIService()
 AI_SERVICES_AVAILABLE = True
 
 # Payment services (simple fallback)
@@ -385,8 +337,8 @@ def newsletter_subscribe(request):
         })
 
 # ==================== ADMIN VIEWS ====================
+# ==================== DASHBOARD ENHANCEMENTS ====================
 
-@staff_member_required
 @staff_member_required
 def admin_dashboard(request):
     """Enhanced admin dashboard with comprehensive statistics"""
@@ -458,6 +410,18 @@ def admin_dashboard(request):
     fruit_types = FruitType.objects.count()
     quality_readings = FruitQualityReading.objects.count()
     
+    # ===== AI SYSTEM STATS =====
+    total_predictions = FruitQualityReading.objects.count()
+    dataset_size = ProductDataset.objects.count()
+    active_vendors = CustomUser.objects.filter(
+        user_type='vendor', is_active=True
+    ).count()
+    
+    # Get critical alerts
+    critical_alerts = ProductAlert.objects.filter(
+        is_resolved=False, severity='critical'
+    ).count()
+    
     # ===== RECENT DATA =====
     recent_products = Product.objects.select_related(
         'vendor', 'category'
@@ -475,8 +439,19 @@ def admin_dashboard(request):
     django_version = django.get_version()
     debug = settings.DEBUG
     
+    # Add status colors for orders
+    for order in recent_orders:
+        status_colors = {
+            'pending': 'warning',
+            'confirmed': 'info',
+            'shipped': 'primary',
+            'delivered': 'success',
+            'cancelled': 'danger'
+        }
+        order.status_color = status_colors.get(order.status, 'secondary')
+    
     context = {
-        # User statistics (FLATTENED - as expected by template)
+        # User statistics
         'total_users': total_users,
         'total_admins': total_admins,
         'total_vendors': total_vendors,
@@ -486,6 +461,7 @@ def admin_dashboard(request):
         'admin_percentage': admin_percentage,
         'vendor_percentage': vendor_percentage,
         'customer_percentage': customer_percentage,
+        'active_vendors': active_vendors,
         
         # Product statistics
         'total_products': total_products,
@@ -518,6 +494,12 @@ def admin_dashboard(request):
         'fruit_types': fruit_types,
         'quality_readings': quality_readings,
         
+        # AI System stats
+        'ai_service': enhanced_ai_service,
+        'total_predictions': total_predictions,
+        'dataset_size': dataset_size,
+        'critical_alerts': critical_alerts,
+        
         # Recent data
         'recent_products': recent_products,
         'recent_orders': recent_orders,
@@ -531,6 +513,539 @@ def admin_dashboard(request):
     }
     
     return render(request, 'bika/pages/admin/dashboard.html', context)
+
+@staff_member_required
+@require_GET
+def sales_analytics_api(request):
+    """API for sales analytics"""
+    days = int(request.GET.get('days', 30))
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=days)
+    
+    # Generate daily sales data
+    sales_data = []
+    current_date = start_date
+    
+    while current_date <= end_date:
+        next_date = current_date + timedelta(days=1)
+        daily_sales = Order.objects.filter(
+            created_at__range=[current_date, next_date],
+            status='delivered'
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+        
+        sales_data.append({
+            'date': current_date.strftime('%Y-%m-%d'),
+            'sales': float(daily_sales),
+            'orders': Order.objects.filter(
+                created_at__range=[current_date, next_date],
+                status='delivered'
+            ).count()
+        })
+        
+        current_date = next_date
+    
+    # Get top selling products
+    top_products = OrderItem.objects.filter(
+        order__created_at__range=[start_date, end_date],
+        order__status='delivered'
+    ).values(
+        'product__name', 'product__sku'
+    ).annotate(
+        total_quantity=Sum('quantity'),
+        total_revenue=Sum(F('quantity') * F('price'))
+    ).order_by('-total_quantity')[:5]
+    
+    return JsonResponse({
+        'success': True,
+        'sales_data': sales_data,
+        'top_products': list(top_products),
+        'total_days': days
+    })
+
+@staff_member_required
+@require_GET
+def get_active_alerts(request):
+    """API for active alerts"""
+    alerts = ProductAlert.objects.filter(
+        is_resolved=False
+    ).select_related('product').order_by('-created_at')[:10]
+    
+    alert_list = []
+    for alert in alerts:
+        alert_list.append({
+            'id': alert.id,
+            'title': f"{alert.alert_type.replace('_', ' ').title()} Alert",
+            'message': alert.message,
+            'severity': alert.severity,
+            'product': alert.product.name if alert.product else 'Unknown',
+            'created_at': alert.created_at.strftime('%Y-%m-%d %H:%M'),
+            'details': json.loads(alert.details) if alert.details else {}
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'alerts': alert_list,
+        'count': alerts.count()
+    })
+
+@staff_member_required
+@require_GET
+def performance_metrics_api(request):
+    """API for performance metrics"""
+    import psutil
+    import os
+    
+    # Get system metrics
+    cpu_percent = psutil.cpu_percent(interval=1)
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage('/')
+    
+    # Get database query count (simplified)
+    from django.db import connection
+    db_queries = len(connection.queries) if settings.DEBUG else 0
+    
+    return JsonResponse({
+        'success': True,
+        'response_time': round(cpu_percent / 100, 3),  # Simulated
+        'server_load': f"{cpu_percent}%",
+        'memory_usage': f"{memory.used / (1024**3):.1f}GB / {memory.total / (1024**3):.1f}GB",
+        'disk_usage': f"{disk.percent}%",
+        'db_queries': db_queries,
+        'timestamp': timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+    })
+
+@staff_member_required
+@require_GET
+def export_inventory_report(request):
+    """Export inventory report as CSV"""
+    import csv
+    from django.http import HttpResponse
+    
+    # Create CSV response
+    response = HttpResponse(content_type='text/csv')
+    filename = f"inventory-report-{timezone.now().strftime('%Y%m%d')}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    writer = csv.writer(response)
+    
+    # Write headers
+    writer.writerow([
+        'Product ID', 'SKU', 'Product Name', 'Category', 
+        'Stock Quantity', 'Low Stock Threshold', 'Status',
+        'Price', 'Vendor', 'Last Updated'
+    ])
+    
+    # Write data
+    products = Product.objects.select_related('category', 'vendor').order_by('category__name', 'name')
+    
+    for product in products:
+        writer.writerow([
+            product.id,
+            product.sku,
+            product.name,
+            product.category.name if product.category else '',
+            product.stock_quantity,
+            product.low_stock_threshold,
+            product.get_status_display(),
+            float(product.price),
+            product.vendor.username if product.vendor else '',
+            product.updated_at.strftime('%Y-%m-%d %H:%M')
+        ])
+    
+    return response
+
+@staff_member_required
+@require_GET
+def get_user_activity(request):
+    """Get recent user activity"""
+    from datetime import datetime, timedelta
+    
+    recent_activity = []
+    
+    # Recent logins (last 24 hours)
+    recent_logins = CustomUser.objects.filter(
+        last_login__gte=timezone.now() - timedelta(hours=24)
+    ).order_by('-last_login')[:5]
+    
+    for user in recent_logins:
+        recent_activity.append({
+            'type': 'login',
+            'user': user.username,
+            'time': user.last_login.strftime('%H:%M'),
+            'icon': 'fas fa-sign-in-alt',
+            'color': 'success'
+        })
+    
+    # Recent orders
+    recent_orders = Order.objects.order_by('-created_at')[:3]
+    for order in recent_orders:
+        recent_activity.append({
+            'type': 'order',
+            'user': order.user.username,
+            'time': order.created_at.strftime('%H:%M'),
+            'icon': 'fas fa-shopping-cart',
+            'color': 'primary',
+            'details': f"Order #{order.order_number}"
+        })
+    
+    # Recent product additions
+    recent_products = Product.objects.order_by('-created_at')[:3]
+    for product in recent_products:
+        recent_activity.append({
+            'type': 'product',
+            'user': product.vendor.username if product.vendor else 'System',
+            'time': product.created_at.strftime('%H:%M'),
+            'icon': 'fas fa-cube',
+            'color': 'info',
+            'details': f"Added: {product.name}"
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'activities': recent_activity
+    })
+# ==================== AI ALERT SYSTEM VIEWS ====================
+
+@staff_member_required
+def ai_alert_dashboard(request):
+    """Dashboard for AI-generated alerts"""
+    # Get all alerts
+    alerts = ProductAlert.objects.filter(
+        is_resolved=False
+    ).select_related('product', 'product__vendor').order_by('-created_at')
+    
+    # Get alert statistics
+    total_alerts = alerts.count()
+    critical_alerts = alerts.filter(severity='critical').count()
+    high_alerts = alerts.filter(severity='high').count()
+    
+    # Get recent predictions
+    recent_predictions = []
+    try:
+        from .ai_integration.models import FruitPrediction
+        recent_predictions = FruitPrediction.objects.select_related(
+            'product'
+        ).order_by('-prediction_date')[:10]
+    except:
+        pass
+    
+    context = {
+        'alerts': alerts[:50],  # Limit to 50 for performance
+        'total_alerts': total_alerts,
+        'critical_alerts': critical_alerts,
+        'high_alerts': high_alerts,
+        'recent_predictions': recent_predictions,
+        'ai_service': enhanced_ai_service,
+        'site_info': SiteInfo.objects.first(),
+    }
+    
+    return render(request, 'bika/pages/admin/ai_alert_dashboard.html', context)
+
+@staff_member_required
+@require_POST
+def scan_all_products_for_alerts(request):
+    """Scan all products and generate AI alerts"""
+    try:
+        from .models import Product
+        
+        # Get all active products
+        products = Product.objects.filter(status='active')
+        
+        results = {
+            'scanned': 0,
+            'predictions': 0,
+            'alerts': 0,
+            'errors': 0
+        }
+        
+        # Scan each product
+        for product in products[:50]:  # Limit to 50 for performance
+            try:
+                # Get prediction and alerts
+                result = enhanced_ai_service.predict_and_alert(product.id)
+                
+                if 'error' in result:
+                    results['errors'] += 1
+                else:
+                    results['predictions'] += 1
+                    results['alerts'] += len(result.get('alerts', []))
+                
+                results['scanned'] += 1
+                
+            except Exception as e:
+                results['errors'] += 1
+                print(f"Error scanning product {product.id}: {e}")
+        
+        messages.success(
+            request, 
+            f"Scanned {results['scanned']} products. "
+            f"Generated {results['alerts']} new alerts."
+        )
+        
+        return redirect('bika:ai_alert_dashboard')
+        
+    except Exception as e:
+        messages.error(request, f"Error scanning products: {e}")
+        return redirect('bika:ai_alert_dashboard')
+
+@login_required
+def product_ai_insights(request, product_id):
+    """Show AI insights for a specific product"""
+    product = get_object_or_404(Product, id=product_id)
+    
+    # Check permission
+    if not request.user.is_staff and product.vendor != request.user:
+        messages.error(request, "Access denied.")
+        return redirect('bika:home')
+    
+    # Get predictions for this product
+    predictions = []
+    try:
+        from .ai_integration.models import FruitPrediction
+        predictions = FruitPrediction.objects.filter(
+            product=product
+        ).order_by('-prediction_date')[:10]
+    except:
+        pass
+    
+    # Get alerts for this product
+    alerts = ProductAlert.objects.filter(
+        product=product,
+        is_resolved=False
+    ).order_by('-created_at')
+    
+    # Get real-time prediction
+    current_prediction = None
+    try:
+        result = enhanced_ai_service.predict_and_alert(product.id)
+        if 'prediction' in result:
+            current_prediction = result['prediction']
+    except:
+        pass
+    
+    context = {
+        'product': product,
+        'predictions': predictions,
+        'alerts': alerts,
+        'current_prediction': current_prediction,
+        'ai_service': enhanced_ai_service,
+        'site_info': SiteInfo.objects.first(),
+    }
+    
+    return render(request, 'bika/pages/product_ai_insights.html', context)
+
+@staff_member_required
+def train_new_model_view(request):
+    """Train a new AI model"""
+    if request.method == 'POST':
+        if 'dataset_file' not in request.FILES:
+            messages.error(request, 'Please upload a dataset file')
+            return redirect('bika:train_new_model')
+        
+        csv_file = request.FILES['dataset_file']
+        target_column = request.POST.get('target_column', 'quality_class')
+        model_type = request.POST.get('model_type', 'random_forest')
+        
+        # Train model
+        result = enhanced_ai_service.train_five_models(csv_file, target_column)
+        
+        if 'error' in result:
+            messages.error(request, f"Training failed: {result['error']}")
+        else:
+            messages.success(request, 'Model trained successfully!')
+            
+            if result.get('model_saved'):
+                messages.info(request, f"New model activated (ID: {result['model_id']})")
+        
+        return redirect('bika:model_management')
+    
+    context = {
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/admin/train_new_model.html', context)
+
+@staff_member_required
+def model_management(request):
+    """Manage AI models"""
+    # Get model comparison
+    comparison_result = enhanced_ai_service.get_detailed_model_comparison()
+    
+    # Get active model info
+    active_model_info = None
+    if enhanced_ai_service.active_model:
+        active_model_info = {
+            'name': enhanced_ai_service.active_model['record'].name,
+            'accuracy': enhanced_ai_service.active_model['record'].accuracy,
+            'features': enhanced_ai_service.active_model['record'].features_used,
+            'trained_date': enhanced_ai_service.active_model['record'].trained_date
+        }
+    
+    context = {
+        'comparison_result': comparison_result,
+        'active_model': active_model_info,
+        'ai_service': enhanced_ai_service,
+        'site_info': SiteInfo.objects.first(),
+    }
+    
+    return render(request, 'bika/pages/admin/model_management.html', context)
+
+@staff_member_required
+@require_POST
+def activate_model(request, model_id):
+    """Activate a specific model"""
+    try:
+        from .ai_integration.models import TrainedModel
+        
+        # Get the model to activate
+        model_to_activate = TrainedModel.objects.get(id=model_id, model_type='quality')
+        
+        # Deactivate all other models
+        TrainedModel.objects.filter(
+            model_type='quality'
+        ).exclude(id=model_id).update(is_active=False)
+        
+        # Activate this model
+        model_to_activate.is_active = True
+        model_to_activate.save()
+        
+        # Reload the model in the service
+        enhanced_ai_service.load_active_model()
+        
+        messages.success(request, f"Model '{model_to_activate.name}' activated successfully!")
+        
+    except TrainedModel.DoesNotExist:
+        messages.error(request, "Model not found")
+    except Exception as e:
+        messages.error(request, f"Error activating model: {e}")
+    
+    return redirect('bika:model_management')
+
+@staff_member_required
+def generate_sample_data_view(request):
+    """Generate sample dataset for training"""
+    if request.method == 'POST':
+        num_samples = int(request.POST.get('samples', 1000))
+        
+        result = enhanced_ai_service.generate_sample_dataset(num_samples)
+        
+        if result.get('success'):
+            messages.success(request, f'Sample dataset generated with {num_samples} records')
+            
+            # Offer download link
+            request.session['generated_dataset'] = {
+                'filename': result['filename'],
+                'download_url': result['download_url']
+            }
+        else:
+            messages.error(request, f"Failed to generate dataset: {result.get('error')}")
+    
+    context = {
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/admin/generate_sample_data.html', context)
+
+@staff_member_required
+def download_generated_dataset(request):
+    """Download generated dataset"""
+    dataset_info = request.session.get('generated_dataset')
+    
+    if not dataset_info:
+        messages.error(request, "No dataset available for download")
+        return redirect('bika:generate_sample_data')
+    
+    filepath = os.path.join(settings.MEDIA_ROOT, 'datasets', dataset_info['filename'])
+    
+    if os.path.exists(filepath):
+        with open(filepath, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{dataset_info["filename"]}"'
+            return response
+    
+    messages.error(request, "Dataset file not found")
+    return redirect('bika:generate_sample_data')
+
+# ==================== API ENDPOINTS FOR ALERTS ====================
+
+@csrf_exempt
+@require_POST
+def batch_product_scan_api(request):
+    """API endpoint to scan multiple products"""
+    try:
+        product_ids = json.loads(request.body).get('product_ids', [])
+        
+        if not product_ids:
+            return JsonResponse({'success': False, 'error': 'No product IDs provided'})
+        
+        results = {
+            'scanned': 0,
+            'alerts_generated': 0,
+            'errors': 0,
+            'product_results': []
+        }
+        
+        for product_id in product_ids[:20]:  # Limit to 20 products
+            try:
+                result = enhanced_ai_service.predict_and_alert(product_id)
+                
+                product_result = {
+                    'product_id': product_id,
+                    'success': 'error' not in result,
+                    'alerts': len(result.get('alerts', []))
+                }
+                
+                if 'error' in result:
+                    product_result['error'] = result['error']
+                    results['errors'] += 1
+                else:
+                    results['alerts_generated'] += product_result['alerts']
+                
+                results['product_results'].append(product_result)
+                results['scanned'] += 1
+                
+            except Exception as e:
+                results['errors'] += 1
+        
+        return JsonResponse({
+            'success': True,
+            'results': results
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@csrf_exempt
+@require_GET
+def get_product_quality_prediction(request, product_id):
+    """Get quality prediction for a product"""
+    try:
+        product = Product.objects.get(id=product_id)
+        
+        # Check permission
+        if not request.user.is_staff and product.vendor != request.user:
+            return JsonResponse({'success': False, 'error': 'Permission denied'})
+        
+        # Get prediction
+        result = enhanced_ai_service.predict_and_alert(product_id)
+        
+        if 'error' in result:
+            return JsonResponse({'success': False, 'error': result['error']})
+        
+        return JsonResponse({
+            'success': True,
+            'product': {
+                'id': product.id,
+                'name': product.name,
+                'sku': product.sku
+            },
+            'prediction': result.get('prediction'),
+            'alerts': result.get('alerts', [])
+        })
+        
+    except Product.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Product not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
 def product_list_view(request):
     """Display all active products with filtering and pagination"""
     products = Product.objects.filter(status='active').select_related('category', 'vendor')
@@ -2382,3 +2897,872 @@ def handle_bulk_actions(request):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})    
+# Add these views
+def train_five_models_view(request):
+    """
+    Train 5 different AI models on uploaded dataset or existing product data
+    """
+    if request.method == 'POST':
+        try:
+            # Get training parameters
+            test_size = float(request.POST.get('test_size', 0.2))
+            random_state = int(request.POST.get('random_state', 42))
+            target_column = request.POST.get('target_column', 'Class')  # Default to 'Class'
+            
+            # Get which models to train
+            models_to_train = request.POST.getlist('models')
+            if not models_to_train:
+                models_to_train = ['rf', 'xgb', 'svm', 'knn', 'gb']
+            
+            df = None
+            
+            # Check if file was uploaded
+            if 'dataset_file' in request.FILES and request.FILES['dataset_file']:
+                # Use uploaded file
+                uploaded_file = request.FILES['dataset_file']
+                
+                # Save temporarily
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                    for chunk in uploaded_file.chunks():
+                        tmp_file.write(chunk)
+                    tmp_path = tmp_file.name
+                
+                try:
+                    # Load dataset - try multiple encodings
+                    encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+                    for encoding in encodings:
+                        try:
+                            df = pd.read_csv(tmp_path, encoding=encoding)
+                            print(f"Loaded CSV with {encoding} encoding")
+                            break
+                        except:
+                            continue
+                    else:
+                        df = pd.read_csv(tmp_path, encoding='utf-8', errors='ignore')
+                    
+                    print(f"Uploaded dataset shape: {df.shape}")
+                    print(f"Columns: {df.columns.tolist()}")
+                    
+                    # Check if target column exists
+                    if target_column not in df.columns:
+                        # Try to find it with different cases
+                        possible_targets = ['Class', 'class', 'CLASS', 'Quality', 'quality', 'Target']
+                        for possible in possible_targets:
+                            if possible in df.columns:
+                                target_column = possible
+                                break
+                        else:
+                            # If still not found, use last column
+                            target_column = df.columns[-1]
+                            print(f"Target column not found. Using last column: {target_column}")
+                    
+                    print(f"Using target column: {target_column}")
+                    
+                except Exception as e:
+                    messages.error(request, f'Error loading CSV: {str(e)}')
+                    return redirect('bika:train_models')
+                finally:
+                    # Clean up
+                    os.unlink(tmp_path)
+            
+            if df is None or df.empty:
+                # Use database data
+                print("Using database data...")
+                df = get_product_dataset_from_db()
+                target_column = 'Class'  # For database data, we know the column name
+            
+            if df is None or df.empty:
+                messages.error(request, 'No data available for training.')
+                return redirect('bika:train_models')
+            
+            # Train models
+            results = train_multiple_models(df, target_column, models_to_train, test_size, random_state)
+            
+            # Save best model to database
+            if results['best_model']:
+                save_model_to_database(results['best_model'], results)
+            
+            # Store results in session for display
+            request.session['training_results'] = results
+            
+            messages.success(request, f'Training completed! Best model: {results["best_model_name"]} with {results["best_accuracy"]:.2f}% accuracy')
+            return redirect('bika:training_results')
+            
+        except Exception as e:
+            messages.error(request, f'Training failed: {str(e)}')
+            import traceback
+            traceback.print_exc()
+            return redirect('bika:train_models')
+    
+    # GET request - show training form
+    context = {
+        'site_info': SiteInfo.objects.first(),
+        'product_count': Product.objects.count(),
+        'quality_readings': FruitQualityReading.objects.count(),
+        'active_batches': FruitBatch.objects.filter(status='active').count(),
+        'sensor_data': RealTimeSensorData.objects.count(),
+        'existing_models': TrainedModel.objects.all().order_by('-training_date')[:5]
+    }
+    return render(request, 'bika/pages/admin/train_models.html', context)
+@staff_member_required
+def training_results_view(request):
+    """Display training results"""
+    result = request.session.get('training_result')
+    
+    if not result:
+        messages.error(request, 'No training results found')
+        return redirect('bika:train_models')
+    
+    context = {
+        'result': result,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/ai/training_results.html', context)
+
+@staff_member_required
+def model_comparison_view(request):
+    """Detailed model comparison"""
+    result = enhanced_ai_service.get_detailed_model_comparison()
+    
+    context = {
+        'comparison_result': result,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/ai/model_comparison.html', context)
+
+@staff_member_required
+def generate_sample_dataset_view(request):
+    """Generate sample dataset"""
+    num_samples = int(request.GET.get('samples', 1000))
+    
+    result = enhanced_ai_service.generate_sample_dataset(num_samples)
+    
+    if result.get('success'):
+        messages.success(request, f'Sample dataset generated with {num_samples} samples')
+        return JsonResponse(result)
+    else:
+        messages.error(request, f"Failed to generate dataset: {result.get('error')}")
+        return JsonResponse(result, status=400)
+    
+@staff_member_required
+@require_GET
+def export_sales_report(request):
+    """Export sales report as CSV"""
+    import csv
+    from django.http import HttpResponse
+    from datetime import datetime, timedelta
+    
+    # Get date range (last 30 days by default)
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=30)
+    
+    # Create CSV response
+    response = HttpResponse(content_type='text/csv')
+    filename = f"sales-report-{timezone.now().strftime('%Y%m%d')}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    writer = csv.writer(response)
+    
+    # Write headers
+    writer.writerow([
+        'Date', 'Order ID', 'Customer', 'Product', 'Quantity', 
+        'Unit Price', 'Total Amount', 'Status', 'Payment Method'
+    ])
+    
+    # Write data
+    orders = Order.objects.filter(
+        created_at__range=[start_date, end_date]
+    ).select_related('user').prefetch_related('items').order_by('-created_at')
+    
+    for order in orders:
+        for item in order.items.all():
+            writer.writerow([
+                order.created_at.strftime('%Y-%m-%d'),
+                order.order_number,
+                order.user.username if order.user else '',
+                item.product.name if item.product else '',
+                item.quantity,
+                float(item.price),
+                float(item.quantity * item.price),
+                order.get_status_display(),
+                order.payment_method or 'N/A'
+            ])
+    
+    return response
+
+# Add this function to your views.py file, anywhere in the file:
+
+def favicon_view(request):
+    """Handle favicon requests to avoid 404 errors"""
+    from django.http import HttpResponse
+    return HttpResponse(status=204)  # No content response
+@staff_member_required
+def product_ai_insights_overview(request):
+    """Overview page for product AI insights"""
+    # Get all active products
+    products = Product.objects.filter(status='active').select_related('category', 'vendor')
+    
+    # Get counts
+    total_products = products.count()
+    
+    # Get AI predictions for each product
+    try:
+        from .ai_integration.models import FruitPrediction
+        recent_predictions = FruitPrediction.objects.select_related('product').order_by('-prediction_date')[:10]
+        
+        # Count products with predictions
+        product_ids_with_predictions = FruitPrediction.objects.values_list('product_id', flat=True).distinct()
+        products_with_predictions = len(product_ids_with_predictions)
+        
+        # Add AI data to products
+        for product in products:
+            product.ai_predictions = FruitPrediction.objects.filter(product=product)[:3]
+            product.alert_count = ProductAlert.objects.filter(product=product, is_resolved=False).count()
+    except:
+        recent_predictions = []
+        products_with_predictions = 0
+        for product in products:
+            product.ai_predictions = []
+            product.alert_count = 0
+    
+    # Get alert stats
+    active_alerts = ProductAlert.objects.filter(is_resolved=False).count()
+    high_risk_products = ProductAlert.objects.filter(
+        is_resolved=False, 
+        severity__in=['high', 'critical']
+    ).values('product').distinct().count()
+    
+    context = {
+        'products': products,
+        'total_products': total_products,
+        'products_with_predictions': products_with_predictions,
+        'recent_predictions': recent_predictions,
+        'active_alerts': active_alerts,
+        'high_risk_products': high_risk_products,
+        'last_analysis': timezone.now().strftime("%Y-%m-%d %H:%M"),
+        'site_info': SiteInfo.objects.first(),
+    }
+    
+    return render(request, 'bika/pages/admin/product_ai_insights_overview.html', context)
+
+# In views.py
+@staff_member_required
+def fruit_quality_dashboard(request):
+    """Fruit quality monitoring dashboard"""
+    # Get active fruit batches
+    active_batches = FruitBatch.objects.filter(
+        status='active'
+    ).select_related(
+        'fruit_type', 'storage_location'
+    ).prefetch_related(
+        'quality_readings'
+    ).order_by('expected_expiry')
+    
+    # Add days_remaining calculation to each batch
+    for batch in active_batches:
+        if batch.expected_expiry:
+            remaining = (batch.expected_expiry - timezone.now()).days
+            batch.days_remaining = max(remaining, 0)
+        else:
+            batch.days_remaining = 0
+    
+    # Get latest quality reading for each batch
+    for batch in active_batches:
+        latest_reading = batch.quality_readings.order_by('-timestamp').first()
+        batch.latest_reading = latest_reading
+    
+    # Calculate stats
+    total_batches = FruitBatch.objects.count()
+    active_batches_count = active_batches.count()
+    
+    # Count at-risk batches (expiring in less than 3 days)
+    today = timezone.now().date()
+    at_risk_batches = FruitBatch.objects.filter(
+        status='active',
+        expected_expiry__date__lte=today + timedelta(days=3)
+    ).count()
+    
+    # Count expired batches
+    expired_batches = FruitBatch.objects.filter(
+        status='active',
+        expected_expiry__date__lt=today
+    ).count()
+    
+    # Get total readings
+    total_readings = FruitQualityReading.objects.count()
+    
+    # Get AI predictions count
+    ai_predictions = FruitQualityReading.objects.filter(
+        predicted_class__isnull=False
+    ).count()
+    
+    # Quality distribution
+    quality_stats = {
+        'fresh': FruitQualityReading.objects.filter(predicted_class='Fresh').count(),
+        'good': FruitQualityReading.objects.filter(predicted_class='Good').count(),
+        'fair': FruitQualityReading.objects.filter(predicted_class='Fair').count(),
+        'poor': FruitQualityReading.objects.filter(predicted_class='Poor').count(),
+        'rotten': FruitQualityReading.objects.filter(predicted_class='Rotten').count(),
+    }
+    
+    # Get latest sensor data
+    latest_sensor_data = RealTimeSensorData.objects.select_related(
+        'fruit_batch'
+    ).order_by('-recorded_at')[:5]
+    
+    # Fruit type distribution for chart
+    fruit_types = FruitType.objects.all()
+    fruit_types_labels = []
+    fruit_types_data = []
+    
+    for ft in fruit_types:
+        count = FruitBatch.objects.filter(fruit_type=ft).count()
+        if count > 0:
+            fruit_types_labels.append(ft.name)
+            fruit_types_data.append(count)
+    
+    context = {
+        'active_batches': active_batches,  # This is the key line!
+        'stats': {
+            'total_batches': total_batches,
+            'active_batches': active_batches_count,
+            'at_risk_batches': at_risk_batches,
+            'expired_batches': expired_batches,
+            'total_readings': total_readings,
+            'ai_predictions': ai_predictions,
+        },
+        'quality_stats': quality_stats,
+        'latest_sensor_data': latest_sensor_data,
+        'last_updated': timezone.now().strftime("%H:%M:%S"),
+        'fruit_types_labels': fruit_types_labels,
+        'fruit_types_data': fruit_types_data,
+        'site_info': SiteInfo.objects.first(),
+    }
+    
+    return render(request, 'bika/pages/admin/fruit_dashboard.html', context)    
+
+
+# Add this new view function
+@staff_member_required
+def train_five_models_view(request):
+    """
+    Train 5 different AI models on uploaded dataset or existing product data
+    """
+    if request.method == 'POST':
+        try:
+            # Get training parameters
+            test_size = float(request.POST.get('test_size', 0.2))
+            random_state = int(request.POST.get('random_state', 42))
+            target_column = request.POST.get('target_column', 'Class')  # Default to 'Class'
+            
+            # Get which models to train
+            models_to_train = request.POST.getlist('models')
+            if not models_to_train:
+                models_to_train = ['rf', 'xgb', 'svm', 'knn', 'gb']
+            
+            df = None
+            
+            # Check if file was uploaded
+            if 'dataset_file' in request.FILES and request.FILES['dataset_file']:
+                # Use uploaded file
+                uploaded_file = request.FILES['dataset_file']
+                
+                # Save temporarily
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                    for chunk in uploaded_file.chunks():
+                        tmp_file.write(chunk)
+                    tmp_path = tmp_file.name
+                
+                try:
+                    # Load dataset - try multiple encodings
+                    encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+                    for encoding in encodings:
+                        try:
+                            df = pd.read_csv(tmp_path, encoding=encoding)
+                            print(f"Loaded CSV with {encoding} encoding")
+                            break
+                        except:
+                            continue
+                    else:
+                        df = pd.read_csv(tmp_path, encoding='utf-8', errors='ignore')
+                    
+                    print(f"Uploaded dataset shape: {df.shape}")
+                    print(f"Columns: {df.columns.tolist()}")
+                    
+                    # Check if target column exists
+                    if target_column not in df.columns:
+                        # Try to find it with different cases
+                        possible_targets = ['Class', 'class', 'CLASS', 'Quality', 'quality', 'Target']
+                        for possible in possible_targets:
+                            if possible in df.columns:
+                                target_column = possible
+                                break
+                        else:
+                            # If still not found, use last column
+                            target_column = df.columns[-1]
+                            print(f"Target column not found. Using last column: {target_column}")
+                    
+                    print(f"Using target column: {target_column}")
+                    
+                except Exception as e:
+                    messages.error(request, f'Error loading CSV: {str(e)}')
+                    return redirect('bika:train_models')
+                finally:
+                    # Clean up
+                    os.unlink(tmp_path)
+            
+            if df is None or df.empty:
+                # Use database data
+                print("Using database data...")
+                df = get_product_dataset_from_db()
+                target_column = 'Class'  # For database data, we know the column name
+            
+            if df is None or df.empty:
+                messages.error(request, 'No data available for training.')
+                return redirect('bika:train_models')
+            
+            # Train models
+            results = train_multiple_models(df, target_column, models_to_train, test_size, random_state)
+            
+            # Save best model to database
+            if results['best_model']:
+                save_model_to_database(results['best_model'], results)
+            
+            # Store results in session for display
+            request.session['training_results'] = results
+            
+            messages.success(request, f'Training completed! Best model: {results["best_model_name"]} with {results["best_accuracy"]:.2f}% accuracy')
+            return redirect('bika:training_results')
+            
+        except Exception as e:
+            messages.error(request, f'Training failed: {str(e)}')
+            import traceback
+            traceback.print_exc()
+            return redirect('bika:train_models')
+    
+    # GET request - show training form
+    context = {
+        'site_info': SiteInfo.objects.first(),
+        'product_count': Product.objects.count(),
+        'quality_readings': FruitQualityReading.objects.count(),
+        'active_batches': FruitBatch.objects.filter(status='active').count(),
+        'sensor_data': RealTimeSensorData.objects.count(),
+        'existing_models': TrainedModel.objects.all().order_by('-training_date')[:5]
+    }
+    return render(request, 'bika/pages/admin/train_models.html', context)
+def get_product_dataset_from_db():
+    """
+    Extract product data from database for training
+    """
+    try:
+        from .models import Product, ProductAlert, FruitQualityReading, FruitType
+        
+        # Get products with quality readings
+        products = Product.objects.filter(status='active')
+        
+        data = []
+        for product in products:
+            # Get recent quality readings
+            readings = FruitQualityReading.objects.filter(
+                product=product
+            ).order_by('-timestamp')[:10]  # Get last 10 readings
+            
+            if readings:
+                for reading in readings:
+                    # Get associated fruit type if available
+                    fruit_type_name = 'Unknown'
+                    if hasattr(product, 'fruit_type') and product.fruit_type:
+                        fruit_type_name = product.fruit_type.name
+                    elif reading.fruit_batch and reading.fruit_batch.fruit_type:
+                        fruit_type_name = reading.fruit_batch.fruit_type.name
+                    
+                    data.append({
+                        'Fruit': fruit_type_name,
+                        'Temp': float(reading.temperature),
+                        'Humid (%)': float(reading.humidity),
+                        'Light (Fux)': float(reading.light_intensity),
+                        'CO2 (pmm)': float(reading.co2_level) if reading.co2_level else 400.0,
+                        'Class': reading.predicted_class  # This is your target column
+                    })
+        
+        if not data:
+            print("No data found in database. Creating sample data...")
+            # Create sample data matching your format
+            data = create_sample_fruit_data()
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+        
+        print(f"Generated dataset with {len(df)} rows and {len(df.columns)} columns")
+        print(f"Columns: {df.columns.tolist()}")
+        print(f"Sample data:\n{df.head()}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error getting dataset from DB: {e}")
+        import traceback
+        traceback.print_exc()
+        return create_sample_fruit_data()
+
+def create_sample_fruit_data():
+    """
+    Create sample data matching your dataset format
+    """
+    import numpy as np
+    
+    fruits = ['Apple', 'Banana', 'Orange', 'Mango', 'Grapes']
+    classes = ['Good', 'Fair', 'Poor', 'Rotten', 'Fresh']
+    
+    data = []
+    for i in range(1000):
+        fruit = np.random.choice(fruits)
+        if fruit == 'Apple':
+            temp = np.random.normal(3, 1)
+            humid = np.random.normal(90, 5)
+        elif fruit == 'Banana':
+            temp = np.random.normal(13, 2)
+            humid = np.random.normal(85, 3)
+        elif fruit == 'Orange':
+            temp = np.random.normal(8, 1.5)
+            humid = np.random.normal(88, 4)
+        else:
+            temp = np.random.normal(10, 2)
+            humid = np.random.normal(87, 3)
+        
+        # Add some realistic patterns
+        if temp > 10 or humid < 80:
+            quality_class = np.random.choice(['Poor', 'Fair', 'Rotten'], p=[0.6, 0.3, 0.1])
+        else:
+            quality_class = np.random.choice(['Good', 'Fresh', 'Fair'], p=[0.5, 0.3, 0.2])
+        
+        data.append({
+            'Fruit': fruit,
+            'Temp': round(temp, 1),
+            'Humid (%)': round(humid, 1),
+            'Light (Fux)': round(np.random.uniform(50, 200), 1),
+            'CO2 (pmm)': round(np.random.uniform(300, 500), 1),
+            'Class': quality_class
+        })
+    
+    return data
+def train_multiple_models(df, target_column, models_to_train, test_size=0.2, random_state=42):
+    """
+    Train multiple ML models on the dataset
+    """
+    results = {
+        'models': {},
+        'best_model': None,
+        'best_model_name': None,
+        'best_accuracy': 0,
+        'target_column': target_column,
+        'feature_columns': [],
+        'dataset_info': {
+            'rows': len(df),
+            'columns': len(df.columns),
+            'columns_list': df.columns.tolist()
+        }
+    }
+    
+    try:
+        print(f"\n🔍 Dataset Analysis:")
+        print(f"   Shape: {df.shape}")
+        print(f"   Columns: {df.columns.tolist()}")
+        print(f"   Target column: {target_column}")
+        print(f"   Target values: {df[target_column].unique()}")
+        print(f"   Target distribution:\n{df[target_column].value_counts()}")
+        
+        # Prepare features and target
+        X = df.drop(columns=[target_column])
+        y = df[target_column]
+        
+        # Store feature names
+        results['feature_columns'] = X.columns.tolist()
+        
+        # Handle non-numeric columns in features
+        categorical_cols = X.select_dtypes(include=['object']).columns
+        for col in categorical_cols:
+            X[col] = X[col].astype('category').cat.codes
+        
+        # Check if target needs encoding
+        if y.dtype == 'object':
+            le = LabelEncoder()
+            y = le.fit_transform(y)
+            results['label_encoder'] = le
+            results['classes'] = le.classes_.tolist()
+            print(f"   Encoded classes: {le.classes_}")
+        
+        # Check for missing values
+        if X.isnull().any().any():
+            print(f"   Missing values found. Filling with median...")
+            X = X.fillna(X.median())
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, stratify=y
+        )
+        
+        print(f"\n📊 Data Split:")
+        print(f"   Training samples: {X_train.shape[0]} ({X_train.shape[0]/len(X)*100:.1f}%)")
+        print(f"   Testing samples: {X_test.shape[0]} ({X_test.shape[0]/len(X)*100:.1f}%)")
+        
+        # Scale features
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        results['scaler'] = scaler
+        
+        # Model configurations
+        model_configs = {
+            'rf': {
+                'name': 'Random Forest',
+                'model': RandomForestClassifier(
+                    n_estimators=200,
+                    max_depth=20,
+                    min_samples_split=10,
+                    random_state=random_state,
+                    n_jobs=-1,
+                    class_weight='balanced'
+                )
+            },
+            'xgb': {
+                'name': 'XGBoost',
+                'model': XGBClassifier(
+                    n_estimators=150,
+                    max_depth=8,
+                    learning_rate=0.05,
+                    random_state=random_state,
+                    use_label_encoder=False,
+                    eval_metric='mlogloss'
+                )
+            },
+            'svm': {
+                'name': 'Support Vector Machine',
+                'model': SVC(
+                    C=1.0,
+                    kernel='rbf',
+                    probability=True,
+                    random_state=random_state,
+                    class_weight='balanced'
+                )
+            },
+            'knn': {
+                'name': 'K-Nearest Neighbors',
+                'model': KNeighborsClassifier(
+                    n_neighbors=7,
+                    weights='distance',
+                    algorithm='auto'
+                )
+            },
+            'gb': {
+                'name': 'Gradient Boosting',
+                'model': GradientBoostingClassifier(
+                    n_estimators=150,
+                    learning_rate=0.1,
+                    max_depth=6,
+                    random_state=random_state
+                )
+            }
+        }
+        
+        # Train selected models
+        for model_key in models_to_train:
+            if model_key in model_configs:
+                config = model_configs[model_key]
+                print(f"\n📊 Training {config['name']}...")
+                
+                try:
+                    model = config['model']
+                    model.fit(X_train_scaled, y_train)
+                    
+                    # Predict
+                    y_pred = model.predict(X_test_scaled)
+                    
+                    # Calculate metrics
+                    accuracy = accuracy_score(y_test, y_pred)
+                    precision = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+                    recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+                    f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+                    
+                    # Cross-validation
+                    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5, scoring='accuracy')
+                    cv_mean = cv_scores.mean()
+                    cv_std = cv_scores.std()
+                    
+                    # Feature importance for tree-based models
+                    feature_importance = None
+                    if hasattr(model, 'feature_importances_'):
+                        feature_importance = dict(zip(X.columns, model.feature_importances_))
+                    
+                    # Store results
+                    results['models'][model_key] = {
+                        'name': config['name'],
+                        'accuracy': round(accuracy * 100, 2),
+                        'precision': round(precision * 100, 2),
+                        'recall': round(recall * 100, 2),
+                        'f1_score': round(f1 * 100, 2),
+                        'cv_mean': round(cv_mean * 100, 2),
+                        'cv_std': round(cv_std * 100, 2),
+                        'model_object': model,
+                        'feature_names': X.columns.tolist(),
+                        'feature_importance': feature_importance
+                    }
+                    
+                    # Update best model
+                    if accuracy > results['best_accuracy']:
+                        results['best_accuracy'] = accuracy
+                        results['best_model'] = model
+                        results['best_model_name'] = config['name']
+                        results['best_model_key'] = model_key
+                        results['best_scaler'] = scaler
+                    
+                    print(f"   ✅ {config['name']}: {accuracy*100:.2f}% accuracy")
+                    
+                except Exception as e:
+                    print(f"   ❌ Error training {config['name']}: {str(e)}")
+                    continue
+        
+        # Sort models by accuracy
+        results['sorted_models'] = sorted(
+            results['models'].items(),
+            key=lambda x: x[1]['accuracy'],
+            reverse=True
+        )
+        
+        print(f"\n🏆 Best Model: {results['best_model_name']} ({results['best_accuracy']*100:.2f}%)")
+        
+        return results
+        
+    except Exception as e:
+        print(f"❌ Error in training: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
+def save_model_to_database(training_results):
+    """
+    Save the trained model to database
+    """
+    try:
+        from .models import TrainedModel, ProductDataset
+        
+        if not training_results or 'best_model' not in training_results:
+            return None
+        
+        # Create dataset record
+        dataset = ProductDataset.objects.create(
+            name=f"Product Quality Dataset {timezone.now().strftime('%Y-%m-%d')}",
+            dataset_type='quality_control',
+            description='Dataset generated from product quality readings',
+            row_count=1000,  # Placeholder
+            is_active=True
+        )
+        
+        # Save model to file
+        model_data = {
+            'model': training_results['best_model'],
+            'scaler': training_results.get('best_scaler'),
+            'feature_names': training_results.get('feature_names', []),
+            'training_date': timezone.now(),
+            'accuracy': training_results.get('best_accuracy', 0)
+        }
+        
+        # Create filename
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        model_filename = f"trained_models/model_{timestamp}.pkl"
+        
+        # Ensure directory exists
+        os.makedirs('trained_models', exist_ok=True)
+        
+        # Save model
+        joblib.dump(model_data, model_filename)
+        
+        # Save to database
+        trained_model = TrainedModel.objects.create(
+            name=f"{training_results.get('best_model_name', 'AI Model')} {timestamp}",
+            model_type='fruit_quality',
+            dataset=dataset,
+            model_file=model_filename,
+            accuracy=float(training_results.get('best_accuracy', 0)),
+            is_active=True,
+            feature_columns=training_results.get('feature_names', [])
+        )
+        
+        print(f"Model saved to database: {trained_model.name}")
+        return trained_model
+        
+    except Exception as e:
+        print(f"Error saving model to database: {e}")
+        return None    
+
+@staff_member_required
+def training_results_view(request):
+    """Display training results"""
+    results = request.session.get('training_results', {})
+    
+    if not results:
+        messages.info(request, 'No training results found. Please train a model first.')
+        return redirect('bika:train_models')
+    
+    context = {
+        'results': results,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/admin/training_results.html', context)
+
+@staff_member_required
+def model_comparison_view(request):
+    """Compare trained models"""
+    models = TrainedModel.objects.filter(is_active=True).order_by('-training_date')
+    
+    context = {
+        'models': models,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/admin/model_comparison.html', context)        
+
+@staff_member_required
+def analyze_csv(request):
+    """Analyze uploaded CSV file"""
+    if request.method == 'POST' and 'csv_file' in request.FILES:
+        file = request.FILES['csv_file']
+        
+        # Save temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+            for chunk in file.chunks():
+                tmp_file.write(chunk)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Load CSV
+            df = pd.read_csv(tmp_path)
+            
+            analysis = {
+                'columns': df.columns.tolist(),
+                'shape': df.shape,
+                'dtypes': df.dtypes.astype(str).to_dict(),
+                'head': df.head().to_dict('records'),
+                'missing_values': df.isnull().sum().to_dict(),
+                'unique_counts': {col: df[col].nunique() for col in df.columns}
+            }
+            
+            # Suggest target column
+            suggestions = []
+            for col in df.columns:
+                if col.lower() in ['class', 'quality', 'grade', 'target', 'label']:
+                    suggestions.append((col, 'Likely target (based on name)'))
+                elif df[col].nunique() <= 10:
+                    suggestions.append((col, f'Classification ({df[col].nunique()} classes)'))
+                elif df[col].dtype in ['int64', 'float64'] and df[col].nunique() > 10:
+                    suggestions.append((col, f'Regression ({df[col].nunique()} unique values)'))
+            
+            analysis['suggestions'] = suggestions
+            
+            return JsonResponse({'success': True, 'analysis': analysis})
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+        finally:
+            os.unlink(tmp_path)
+    
+    return JsonResponse({'success': False, 'error': 'No file uploaded'})
