@@ -447,6 +447,14 @@ class StorageLocation(models.Model):
     @property
     def available_capacity(self):
         return self.capacity - self.current_occupancy
+    
+    # ADD THIS PROPERTY METHOD:
+    @property
+    def occupancy_percentage(self):
+        """Calculate occupancy as a percentage"""
+        if self.capacity > 0:
+            return (self.current_occupancy / self.capacity) * 100
+        return 0
 
 class RealTimeSensorData(models.Model):
     """Real-time sensor data model"""
@@ -879,3 +887,548 @@ class FAQ(models.Model):
     
     def __str__(self):
         return self.question
+    
+
+# ==================== USER ROLE MODEL ====================
+
+class UserRole(models.Model):
+    """Role-based access control"""
+    ROLE_CHOICES = [
+        ('admin', 'Administrator'),
+        ('manager', 'Manager'),
+        ('storage_staff', 'Storage Staff'),
+        ('negotiation_team', 'Negotiation Team'),
+        ('client', 'Client'),
+        ('vendor', 'Vendor'),  # Adding vendor for consistency
+        ('customer', 'Customer'),  # Adding customer for consistency
+    ]
+    
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='user_role')
+    role = models.CharField(max_length=50, choices=ROLE_CHOICES)
+    permissions = models.JSONField(default=dict)  # Store granular permissions
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "User Role"
+        verbose_name_plural = "User Roles"
+        ordering = ['user__username']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.get_role_display()}"
+    
+    def has_permission(self, permission):
+        """Check if user has specific permission"""
+        return permission in self.permissions.get('allowed', [])
+
+# ==================== INVENTORY MODELS ====================
+
+class InventoryItem(models.Model):
+    """Core inventory item model"""
+    ITEM_TYPE_CHOICES = [
+        ('storage', 'Storage'),
+        ('sale', 'For Sale'),
+        ('rental', 'Rental'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('reserved', 'Reserved'),
+        ('sold', 'Sold'),
+        ('expired', 'Expired'),
+        ('damaged', 'Damaged'),
+        ('returned', 'Returned'),
+    ]
+    
+    # Basic Information
+    name = models.CharField(max_length=200)
+    sku = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    category = models.ForeignKey('ProductCategory', on_delete=models.CASCADE, related_name='inventory_items')
+    product = models.ForeignKey('Product', on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_items')
+    
+    # Inventory Details
+    quantity = models.IntegerField(default=0)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    total_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    low_stock_threshold = models.IntegerField(default=10)
+    reorder_point = models.IntegerField(default=20)
+    
+    # Type & Status
+    item_type = models.CharField(max_length=20, choices=ITEM_TYPE_CHOICES, default='storage')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    
+    # Location & Storage
+    location = models.ForeignKey('StorageLocation', on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_items')
+    storage_reference = models.CharField(max_length=100, blank=True)
+    batch_number = models.ForeignKey('FruitBatch', on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_items')
+    
+    # Time-based
+    expiry_date = models.DateField(null=True, blank=True)
+    manufactured_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Ownership
+    client = models.ForeignKey(CustomUser, on_delete=models.CASCADE, 
+                             limit_choices_to={'user_type': 'customer'},  # Changed from role to user_type
+                             related_name='client_inventory')
+    added_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, 
+                               related_name='added_inventory_items')
+    
+    # Quality Information
+    quality_rating = models.CharField(max_length=20, choices=[
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('fair', 'Fair'),
+        ('poor', 'Poor'),
+    ], default='good')
+    condition_notes = models.TextField(blank=True)
+    
+    # Audit fields
+    last_checked = models.DateTimeField(null=True, blank=True)
+    checked_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, 
+                                 related_name='checked_inventory_items')
+    next_check_date = models.DateField(null=True, blank=True)
+    
+    # Dimensions
+    weight_kg = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    dimensions = models.CharField(max_length=100, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Inventory Item"
+        verbose_name_plural = "Inventory Items"
+        indexes = [
+            models.Index(fields=['sku', 'status']),
+            models.Index(fields=['expiry_date', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.sku}) - {self.quantity} units"
+    
+    def save(self, *args, **kwargs):
+        # Calculate total value
+        self.total_value = self.quantity * self.unit_price
+        
+        # Generate SKU if not provided
+        if not self.sku:
+            timestamp = timezone.now().strftime('%Y%m%d%H%M')
+            category_prefix = self.category.name[:3].upper() if self.category else 'INV'
+            self.sku = f"{category_prefix}-{timestamp}"
+        
+        # Update last checked if status changed
+        if self.pk:
+            original = InventoryItem.objects.get(pk=self.pk)
+            if original.status != self.status and self.status in ['checked', 'verified']:
+                self.last_checked = timezone.now()
+        
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_low_stock(self):
+        """Check if stock is below threshold"""
+        return self.quantity <= self.low_stock_threshold
+    
+    @property
+    def needs_reorder(self):
+        """Check if needs reorder"""
+        return self.quantity <= self.reorder_point
+    
+    @property
+    def is_near_expiry(self):
+        """Check if item expires within 30 days"""
+        if self.expiry_date:
+            days_remaining = (self.expiry_date - timezone.now().date()).days
+            return 0 <= days_remaining <= 30
+        return False
+    
+    @property
+    def days_until_expiry(self):
+        """Calculate days until expiry"""
+        if self.expiry_date:
+            days = (self.expiry_date - timezone.now().date()).days
+            return max(days, 0)
+        return None
+    
+    @property
+    def storage_duration(self):
+        """Calculate storage duration in days"""
+        if self.created_at:
+            duration = timezone.now() - self.created_at
+            return duration.days
+        return 0
+
+class InventoryHistory(models.Model):
+    """Track all inventory changes"""
+    ACTION_CHOICES = [
+        ('create', 'Created'),
+        ('update', 'Updated'),
+        ('delete', 'Deleted'),
+        ('check_in', 'Checked In'),
+        ('check_out', 'Checked Out'),
+        ('transfer', 'Transferred'),
+        ('adjust', 'Adjusted'),
+        ('reserve', 'Reserved'),
+        ('release', 'Released'),
+        ('damage', 'Damaged'),
+        ('expire', 'Expired'),
+    ]
+    
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name='history')
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='inventory_actions')
+    
+    # Changes made
+    previous_quantity = models.IntegerField(null=True, blank=True)
+    new_quantity = models.IntegerField(null=True, blank=True)
+    previous_status = models.CharField(max_length=20, blank=True)
+    new_status = models.CharField(max_length=20, blank=True)
+    previous_location = models.ForeignKey('StorageLocation', on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_moves')
+    new_location = models.ForeignKey('StorageLocation', on_delete=models.SET_NULL, null=True, blank=True, related_name='new_moves')
+    
+    # Value changes
+    previous_unit_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    new_unit_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    notes = models.TextField(blank=True)
+    reference_number = models.CharField(max_length=100, blank=True)  # For linking to orders, deliveries, etc.
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Inventory History"
+        verbose_name_plural = "Inventory History"
+        indexes = [
+            models.Index(fields=['item', 'timestamp']),
+            models.Index(fields=['action', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        user_name = self.user.username if self.user else 'System'
+        return f"{self.item.name} - {self.get_action_display()} by {user_name}"
+
+# ==================== DELIVERY MODELS ====================
+
+class Delivery(models.Model):
+    """Delivery tracking system"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('packed', 'Packed'),
+        ('in_transit', 'In Transit'),
+        ('out_for_delivery', 'Out for Delivery'),
+        ('delivered', 'Delivered'),
+        ('cancelled', 'Cancelled'),
+        ('failed', 'Failed'),
+        ('returned', 'Returned'),
+    ]
+    
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('partial', 'Partial Payment'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('refunded', 'Refunded'),
+    ]
+    
+    # Delivery Information
+    delivery_number = models.CharField(max_length=50, unique=True)
+    tracking_number = models.CharField(max_length=100, blank=True, unique=True)
+    
+    # Related Orders
+    order = models.ForeignKey('Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='deliveries')
+    
+    # Client Information
+    client = models.ForeignKey(CustomUser, on_delete=models.CASCADE, 
+                             limit_choices_to={'user_type': 'customer'},
+                             related_name='client_deliveries')
+    client_name = models.CharField(max_length=200)
+    client_address = models.TextField()
+    client_phone = models.CharField(max_length=20)
+    client_email = models.EmailField()
+    
+    # Delivery Details
+    delivery_address = models.TextField()
+    delivery_city = models.CharField(max_length=100, blank=True)
+    delivery_state = models.CharField(max_length=100, blank=True)
+    delivery_country = models.CharField(max_length=100, default='Tanzania')
+    delivery_postal_code = models.CharField(max_length=20, blank=True)
+    
+    # Delivery Instructions
+    special_instructions = models.TextField(blank=True)
+    delivery_type = models.CharField(max_length=20, choices=[
+        ('standard', 'Standard'),
+        ('express', 'Express'),
+        ('sameday', 'Same Day'),
+        ('scheduled', 'Scheduled'),
+    ], default='standard')
+    
+    # Time Tracking
+    estimated_delivery = models.DateTimeField()
+    actual_delivery = models.DateTimeField(null=True, blank=True)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+    delivery_window_start = models.TimeField(null=True, blank=True)
+    delivery_window_end = models.TimeField(null=True, blank=True)
+    
+    # Status Tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    status_changed_at = models.DateTimeField(auto_now=True)
+    status_changed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, 
+                                        related_name='delivery_status_changes')
+    
+    # Proof of Delivery
+    proof_of_delivery = models.FileField(upload_to='delivery_proofs/%Y/%m/', blank=True, null=True)
+    proof_of_delivery_url = models.URLField(blank=True)
+    recipient_name = models.CharField(max_length=200, blank=True)
+    recipient_phone = models.CharField(max_length=20, blank=True)
+    recipient_signature = models.TextField(blank=True)  # Could be base64 encoded signature
+    delivery_notes = models.TextField(blank=True)
+    delivery_photos = models.JSONField(default=list, blank=True)  # List of photo URLs
+    
+    # Cost & Payment
+    delivery_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    delivery_tax = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
+    payment_method = models.CharField(max_length=50, blank=True)
+    
+    # Delivery Agent
+    assigned_to = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+                                  limit_choices_to={'user_type': 'vendor'},
+                                  related_name='assigned_deliveries')
+    driver_name = models.CharField(max_length=100, blank=True)
+    driver_phone = models.CharField(max_length=20, blank=True)
+    vehicle_number = models.CharField(max_length=50, blank=True)
+    
+    # Package Information
+    package_count = models.IntegerField(default=0)
+    total_weight = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    package_dimensions = models.CharField(max_length=100, blank=True)
+    insurance_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    packed_at = models.DateTimeField(null=True, blank=True)
+    shipped_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Delivery"
+        verbose_name_plural = "Deliveries"
+        indexes = [
+            models.Index(fields=['delivery_number', 'status']),
+            models.Index(fields=['client', 'created_at']),
+            models.Index(fields=['estimated_delivery', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"Delivery #{self.delivery_number} - {self.client_name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.delivery_number:
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            self.delivery_number = f"DEL{timestamp}"
+        
+        if not self.tracking_number:
+            import random
+            import string
+            random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+            self.tracking_number = f"TRK{random_str}"
+        
+        # Calculate total cost
+        self.total_cost = self.delivery_cost + self.delivery_tax
+        
+        # Update status timestamps
+        if self.pk:
+            original = Delivery.objects.get(pk=self.pk)
+            if original.status != self.status:
+                if self.status == 'packed' and not self.packed_at:
+                    self.packed_at = timezone.now()
+                elif self.status == 'in_transit' and not self.shipped_at:
+                    self.shipped_at = timezone.now()
+                elif self.status == 'delivered' and not self.actual_delivery:
+                    self.actual_delivery = timezone.now()
+        
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_late(self):
+        """Check if delivery is late"""
+        if self.status not in ['delivered', 'cancelled', 'failed'] and self.estimated_delivery:
+            return timezone.now() > self.estimated_delivery
+        return False
+    
+    @property
+    def delivery_duration(self):
+        """Calculate delivery duration in hours"""
+        if self.actual_delivery and self.created_at:
+            duration = self.actual_delivery - self.created_at
+            return round(duration.total_seconds() / 3600, 1)
+        return None
+    
+    @property
+    def items_total_value(self):
+        """Calculate total value of all items in delivery"""
+        total = sum(item.total_price for item in self.delivery_items.all())
+        return total
+    
+    def mark_as_delivered(self, recipient_name, signature=None, notes=''):
+        """Mark delivery as delivered"""
+        self.status = 'delivered'
+        self.actual_delivery = timezone.now()
+        self.recipient_name = recipient_name
+        if signature:
+            self.recipient_signature = signature
+        self.delivery_notes = notes
+        self.save()
+    
+    def generate_tracking_url(self):
+        """Generate tracking URL for the delivery"""
+        if self.tracking_number:
+            return f"https://bika.com/track/{self.tracking_number}"
+        return None
+
+class DeliveryItem(models.Model):
+    """Items included in a delivery"""
+    delivery = models.ForeignKey(Delivery, on_delete=models.CASCADE, related_name='delivery_items')
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name='delivery_items')
+    quantity = models.IntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    notes = models.TextField(blank=True)
+    
+    # Quality at delivery
+    delivered_quality = models.CharField(max_length=20, choices=[
+        ('excellent', 'Excellent'),
+        ('good', 'Good'),
+        ('fair', 'Fair'),
+        ('poor', 'Poor'),
+        ('damaged', 'Damaged'),
+    ], blank=True)
+    
+    class Meta:
+        unique_together = ['delivery', 'item']
+        verbose_name = "Delivery Item"
+        verbose_name_plural = "Delivery Items"
+    
+    def __str__(self):
+        return f"{self.quantity} x {self.item.name} for {self.delivery.delivery_number}"
+    
+    def save(self, *args, **kwargs):
+        # Update inventory quantity when item is added to delivery
+        if self.pk:
+            original = DeliveryItem.objects.get(pk=self.pk)
+            if original.quantity != self.quantity:
+                quantity_diff = self.quantity - original.quantity
+                self.item.quantity -= quantity_diff
+                self.item.save()
+        else:
+            # New delivery item
+            self.item.quantity -= self.quantity
+            self.item.save()
+        
+        super().save(*args, **kwargs)
+    
+    @property
+    def total_price(self):
+        return self.quantity * self.unit_price
+
+class DeliveryStatusHistory(models.Model):
+    """Track delivery status changes"""
+    delivery = models.ForeignKey(Delivery, on_delete=models.CASCADE, related_name='status_history')
+    from_status = models.CharField(max_length=20)
+    to_status = models.CharField(max_length=20)
+    changed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='delivery_history_changes')
+    notes = models.TextField(blank=True)
+    location = models.CharField(max_length=200, blank=True)  # Where status was changed
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Delivery Status History"
+        verbose_name_plural = "Delivery Status History"
+        indexes = [
+            models.Index(fields=['delivery', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.delivery.delivery_number}: {self.from_status} → {self.to_status}"    
+    
+class ClientRequest(models.Model):
+    """Client requests for services"""
+    REQUEST_TYPES = [
+        ('storage', 'Storage Request'),
+        ('delivery', 'Delivery Request'),
+        ('inspection', 'Quality Inspection'),
+        ('withdrawal', 'Withdrawal Request'),
+        ('other', 'Other Request'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('reviewing', 'Under Review'),
+        ('approved', 'Approved'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    URGENCY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+    
+    # Basic Information
+    request_number = models.CharField(max_length=50, unique=True)
+    client = models.ForeignKey(CustomUser, on_delete=models.CASCADE, 
+                             limit_choices_to={'user_type': 'customer'},
+                             related_name='client_requests')
+    request_type = models.CharField(max_length=20, choices=REQUEST_TYPES)
+    
+    # Request Details
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    quantity = models.IntegerField(default=1)
+    
+    # Related Items
+    inventory_items = models.ManyToManyField('InventoryItem', blank=True, related_name='requests')
+    
+    # Status & Priority
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    urgency = models.CharField(max_length=20, choices=URGENCY_CHOICES, default='medium')
+    
+    # Dates
+    requested_date = models.DateTimeField(auto_now_add=True)
+    preferred_delivery_date = models.DateField(null=True, blank=True)
+    estimated_completion_date = models.DateField(null=True, blank=True)
+    actual_completion_date = models.DateField(null=True, blank=True)
+    
+    # Assigned Staff
+    assigned_to = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='assigned_requests')
+    
+    # Additional Info
+    attachments = models.FileField(upload_to='client_requests/%Y/%m/', blank=True, null=True)
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-requested_date']
+    
+    def __str__(self):
+        return f"Request #{self.request_number} - {self.client.username}"
+    
+    def save(self, *args, **kwargs):
+        if not self.request_number:
+            import random
+            import string
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            random_str = ''.join(random.choices(string.ascii_uppercase, k=3))
+            self.request_number = f"REQ-{timestamp}-{random_str}"
+        super().save(*args, **kwargs)    

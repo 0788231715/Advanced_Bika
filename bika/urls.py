@@ -1,5 +1,5 @@
-# bika/urls.py - COMPLETE AND WORKING VERSION
-from django.urls import path
+# bika/urls.py - UPDATED AND OPTIMIZED VERSION
+from django.urls import include, path
 from django.contrib.auth import views as auth_views
 from . import views
 
@@ -80,7 +80,13 @@ urlpatterns = [
     
     # ==================== ORDERS ====================
     path('orders/', views.user_orders, name='user_orders'),
-    path('orders/<int:order_id>/', views.order_detail, name='order_detail'),
+    
+    # Order detail and actions - using include for cleaner structure
+    path('orders/<int:order_id>/', include([
+        path('', views.order_detail, name='order_detail'),
+        path('cancel/', views.cancel_order, name='cancel_order'),
+        path('review/', views.create_review, name='create_review'),
+    ])),
     
     # ==================== CART ====================
     path('cart/', views.cart, name='cart'),
@@ -139,8 +145,6 @@ urlpatterns = [
     
     # ==================== UTILITY ====================
     path('vendor/products/bulk-action/', views.handle_bulk_actions, name='handle_bulk_actions'),
-    path('api/alerts/mark-all-read/', views.mark_all_notifications_read, name='mark_all_alerts_read'),
-    path('api/dashboard/export-sales/', views.export_sales_report, name='export_sales_report'),
     
     # Dashboard API endpoints
     path('api/dashboard/sales-analytics/', views.sales_analytics_api, name='sales_analytics_api'),
@@ -157,25 +161,60 @@ urlpatterns = [
     path('admin/activate-model/<int:model_id>/', views.activate_model, name='activate_model'),
     path('admin/generate-sample-data/', views.generate_sample_data_view, name='generate_sample_data'),
     path('admin/download-dataset/', views.download_generated_dataset, name='download_dataset'),
-    # In bika/urls.py - ADD THIS
-    path('admin/product-ai-insights-overview/', views.product_ai_insights_overview, name='product_ai_insights_overview'),
+    
     # ==================== PRODUCT AI INSIGHTS ====================
+    path('admin/product-ai-insights-overview/', views.product_ai_insights_overview, name='product_ai_insights_overview'),
     path('product/<int:product_id>/ai-insights/', views.product_ai_insights, name='product_ai_insights'),
     
     # ==================== ADDITIONAL API ENDPOINTS ====================
     path('api/batch-scan/', views.batch_product_scan_api, name='batch_scan_api'),
     path('api/product/<int:product_id>/quality-prediction/', views.get_product_quality_prediction, name='quality_prediction_api'),
     path('api/analyze-csv/', views.analyze_csv, name='analyze_csv'),
+    
     # ==================== AI TRAINING ====================
     path('ai/train-models/', views.train_five_models_view, name='train_models'),
     path('ai/training-results/', views.training_results_view, name='training_results'),
     path('ai/model-comparison/', views.model_comparison_view, name='model_comparison'),
     path('ai/generate-sample-dataset/', views.generate_sample_dataset_view, name='generate_sample_dataset'),
-    # bika/urls.py - Add these URLs
-    path('ai/train-models/', views.train_five_models_view, name='train_models'),
-    path('ai/training-results/', views.training_results_view, name='training_results'),
-    path('ai/model-comparison/', views.model_comparison_view, name='model_comparison'),
-    path('ai/generate-sample-dataset/', views.generate_sample_dataset_view, name='generate_sample_dataset'),
+    
     # ==================== FAVICON (to avoid 404) ====================
     path('favicon.ico', views.favicon_view, name='favicon'),
+    
+    # ==================== DEBUG & UTILITY ====================
+    path('debug/urls/', views.debug_urls, name='debug_urls'),
+    path('api/dashboard/export-sales/', views.export_sales_report, name='export_sales_report'),
+
+    # ==================== ROLE-BASED URLS ====================
+    # Manager URLs
+    path('manager/', views.manager_dashboard, name='manager_dashboard'),
+    path('manager/inventory/', views.manager_inventory, name='manager_inventory'),
+    path('manager/deliveries/', views.manager_deliveries, name='manager_deliveries'),
+    path('manager/reports/', views.manager_reports, name='manager_reports'),
+    path('manager/deliveries/<int:delivery_id>/update-status/', views.update_delivery_status, name='update_delivery_status'),
+    path('manager/deliveries/<int:delivery_id>/assign-staff/', views.assign_delivery_staff, name='assign_delivery_staff'),
+
+    # Storage Staff URLs
+    path('storage/', views.storage_dashboard, name='storage_dashboard'),
+    path('storage/inventory/', views.storage_inventory, name='storage_inventory'),
+    path('storage/locations/', views.storage_locations, name='storage_locations'),
+    path('storage/check-in/', views.storage_check_in, name='storage_check_in'),
+    path('storage/check-out/', views.storage_check_out, name='storage_check_out'),
+    path('storage/transfer/', views.storage_transfer, name='storage_transfer'),
+
+    # Client URLs
+    path('client/dashboard/', views.client_dashboard, name='client_dashboard'),
+    path('client/inventory/', views.client_inventory, name='client_inventory'),
+    path('client/inventory/<int:item_id>/', views.client_item_detail, name='client_item_detail'),
+    path('client/deliveries/', views.client_deliveries, name='client_deliveries'),
+    path('client/deliveries/<int:delivery_id>/', views.client_delivery_detail, name='client_delivery_detail'),
+    path('client/requests/', views.client_requests, name='client_requests'),
+    path('client/requests/create/', views.create_client_request, name='create_client_request'),
+    path('client/requests/', views.client_requests_list, name='client_requests_list'),
+    path('client/requests/<int:request_id>/', views.client_request_detail, name='client_request_detail'),
+    
+]
+
+# Add URL patterns for Fruit Quality Dashboard (admin)
+urlpatterns += [
+    path('admin/fruit-dashboard/', views.fruit_quality_dashboard, name='fruit_dashboard'),
 ]

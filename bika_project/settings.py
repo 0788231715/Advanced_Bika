@@ -13,7 +13,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings
 SECRET_KEY = 'django-insecure-bika-project-secret-key-2025-change-this-in-production'
 DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '172.16.19.60']
+CSRF_TRUSTED_ORIGINS = [
+  'http://localhost:8000',
+  'http://127.0.0.1:8000',
+  'http://0.0.0.0:8000',
+  'http://172.16.16.195:8000',
+]
+
+
 
 # Application definition
 INSTALLED_APPS = [
@@ -37,9 +45,15 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'bika.middleware.SecurityHeadersMiddleware',
+    'bika.middleware.SessionTimeoutMiddleware',
+    'bika.middleware.RoleBasedAccessMiddleware',
+
 ]
 
 ROOT_URLCONF = 'bika_project.urls'
+WSGI_APPLICATION = 'bika_project.wsgi.application'
+
 
 TEMPLATES = [
     {
@@ -62,7 +76,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'bika_project.wsgi.application'
+
 
 # Database
 DATABASES = {
@@ -140,6 +154,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'http://0.0.0.0:8000',
+    'http://172.16.16.195:8000',
 ]
 
 # Security Settings for production
@@ -227,20 +242,29 @@ handler400 = 'bika.views.handler400'
 
 # Only add optional apps if they are installed
 try:
-    import crispy_forms
     INSTALLED_APPS.insert(0, 'crispy_forms')
     CRISPY_TEMPLATE_PACK = "bootstrap4"
 except ImportError:
     pass
 
 try:
-    import django_extensions
     INSTALLED_APPS.append('django_extensions')
 except ImportError:
     pass
 
 try:
-    import mathfilters
     INSTALLED_APPS.append('mathfilters')
 except ImportError:
     pass
+# Session settings for timeout middleware
+SESSION_COOKIE_AGE = 3600  # 1 hour in seconds
+SESSION_SAVE_EVERY_REQUEST = True  # Update session on every request
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# Security settings
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+# CSP Settings (if using SecurityHeadersMiddleware)
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'

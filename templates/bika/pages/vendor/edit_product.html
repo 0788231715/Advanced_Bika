@@ -1,0 +1,570 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Edit Product - Bika{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/vendor_sidebar.html' %}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-edit me-2"></i>Edit Product: {{ product.name }}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <!-- Messages -->
+                    {% if messages %}
+                    <div class="mb-4">
+                        {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Product Info Tabs -->
+                    <ul class="nav nav-tabs mb-4" id="productTab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic" type="button" role="tab">
+                                <i class="fas fa-info-circle me-2"></i>Basic Info
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="details-tab" data-bs-toggle="tab" data-bs-target="#details" type="button" role="tab">
+                                <i class="fas fa-cogs me-2"></i>Details
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="images-tab" data-bs-toggle="tab" data-bs-target="#images" type="button" role="tab">
+                                <i class="fas fa-images me-2"></i>Images
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="inventory-tab" data-bs-toggle="tab" data-bs-target="#inventory" type="button" role="tab">
+                                <i class="fas fa-boxes me-2"></i>Inventory
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="seo-tab" data-bs-toggle="tab" data-bs-target="#seo" type="button" role="tab">
+                                <i class="fas fa-search me-2"></i>SEO
+                            </button>
+                        </li>
+                    </ul>
+
+                    <form method="post" enctype="multipart/form-data" id="editProductForm">
+                        {% csrf_token %}
+                        
+                        <div class="tab-content" id="productTabContent">
+                            <!-- Basic Info Tab -->
+                            <div class="tab-pane fade show active" id="basic" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="name" class="form-label">Product Name *</label>
+                                        <input type="text" class="form-control" id="name" name="name" 
+                                               value="{{ product.name }}" required>
+                                        <div class="form-text">A descriptive name for your product.</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="sku" class="form-label">SKU *</label>
+                                        <input type="text" class="form-control" id="sku" name="sku" 
+                                               value="{{ product.sku }}" required>
+                                        <div class="form-text">Stock Keeping Unit (unique identifier).</div>
+                                    </div>
+                                    
+                                    <div class="col-12 mb-3">
+                                        <label for="short_description" class="form-label">Short Description</label>
+                                        <textarea class="form-control" id="short_description" name="short_description" 
+                                                  rows="2">{{ product.short_description }}</textarea>
+                                        <div class="form-text">Brief description shown in product listings (max 300 chars).</div>
+                                    </div>
+                                    
+                                    <div class="col-12 mb-3">
+                                        <label for="description" class="form-label">Full Description *</label>
+                                        <textarea class="form-control" id="description" name="description" 
+                                                  rows="5" required>{{ product.description }}</textarea>
+                                        <div class="form-text">Detailed description of your product.</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="category" class="form-label">Category *</label>
+                                        <select class="form-select" id="category" name="category" required>
+                                            <option value="">Select Category</option>
+                                            {% for cat in categories %}
+                                            <option value="{{ cat.id }}" {% if cat.id == product.category.id %}selected{% endif %}>
+                                                {{ cat.name }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="tags" class="form-label">Tags</label>
+                                        <input type="text" class="form-control" id="tags" name="tags" 
+                                               value="{{ product.tags }}">
+                                        <div class="form-text">Comma-separated keywords for search.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Details Tab -->
+                            <div class="tab-pane fade" id="details" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="brand" class="form-label">Brand</label>
+                                        <input type="text" class="form-control" id="brand" name="brand" 
+                                               value="{{ product.brand }}">
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="model" class="form-label">Model</label>
+                                        <input type="text" class="form-control" id="model" name="model" 
+                                               value="{{ product.model }}">
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="condition" class="form-label">Condition</label>
+                                        <select class="form-select" id="condition" name="condition">
+                                            {% for value, label in condition_choices %}
+                                            <option value="{{ value }}" {% if value == product.condition %}selected{% endif %}>
+                                                {{ label }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="color" class="form-label">Color</label>
+                                        <input type="text" class="form-control" id="color" name="color" 
+                                               value="{{ product.color }}">
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="size" class="form-label">Size</label>
+                                        <input type="text" class="form-control" id="size" name="size" 
+                                               value="{{ product.size }}">
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="material" class="form-label">Material</label>
+                                        <input type="text" class="form-control" id="material" name="material" 
+                                               value="{{ product.material }}">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="weight" class="form-label">Weight (kg)</label>
+                                        <input type="number" step="0.01" class="form-control" id="weight" name="weight" 
+                                               value="{{ product.weight|default:'' }}">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="dimensions" class="form-label">Dimensions (L×W×H cm)</label>
+                                        <input type="text" class="form-control" id="dimensions" name="dimensions" 
+                                               value="{{ product.dimensions }}">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Images Tab -->
+                            <div class="tab-pane fade" id="images" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-12 mb-4">
+                                        <h6>Current Images</h6>
+                                        {% if product.images.all %}
+                                        <div class="row g-3" id="current-images">
+                                            {% for image in product.images.all %}
+                                            <div class="col-md-3 col-6">
+                                                <div class="card">
+                                                    <img src="{{ image.image.url }}" class="card-img-top" 
+                                                         alt="{{ image.alt_text|default:product.name }}"
+                                                         style="height: 150px; object-fit: cover;">
+                                                    <div class="card-body p-2">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" 
+                                                                   name="delete_images" value="{{ image.id }}" 
+                                                                   id="delete_image_{{ image.id }}">
+                                                            <label class="form-check-label small" for="delete_image_{{ image.id }}">
+                                                                Delete
+                                                            </label>
+                                                        </div>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" 
+                                                                   name="primary_image" value="{{ image.id }}" 
+                                                                   id="primary_image_{{ image.id }}"
+                                                                   {% if image.is_primary %}checked{% endif %}>
+                                                            <label class="form-check-label small" for="primary_image_{{ image.id }}">
+                                                                Primary
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% else %}
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle me-2"></i>No images uploaded yet.
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="col-12">
+                                        <h6>Add New Images</h6>
+                                        <div class="mb-3">
+                                            <label for="new_images" class="form-label">Upload Images</label>
+                                            <input class="form-control" type="file" id="new_images" name="new_images" 
+                                                   accept="image/*" multiple>
+                                            <div class="form-text">You can upload multiple images. First image will be set as primary.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Inventory Tab -->
+                            <div class="tab-pane fade" id="inventory" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="price" class="form-label">Price *</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" step="0.01" class="form-control" id="price" name="price" 
+                                                   value="{{ product.price }}" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="compare_price" class="form-label">Compare at Price</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" step="0.01" class="form-control" id="compare_price" 
+                                                   name="compare_price" value="{{ product.compare_price|default:'' }}">
+                                        </div>
+                                        <div class="form-text">Original price to show discount.</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="cost_price" class="form-label">Cost Price</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" step="0.01" class="form-control" id="cost_price" 
+                                                   name="cost_price" value="{{ product.cost_price|default:'' }}">
+                                        </div>
+                                        <div class="form-text">Your cost for this product.</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="tax_rate" class="form-label">Tax Rate (%)</label>
+                                        <div class="input-group">
+                                            <input type="number" step="0.01" class="form-control" id="tax_rate" 
+                                                   name="tax_rate" value="{{ product.tax_rate|default:'0' }}">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="stock_quantity" class="form-label">Stock Quantity</label>
+                                        <input type="number" class="form-control" id="stock_quantity" name="stock_quantity" 
+                                               value="{{ product.stock_quantity }}">
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="low_stock_threshold" class="form-label">Low Stock Alert</label>
+                                        <input type="number" class="form-control" id="low_stock_threshold" 
+                                               name="low_stock_threshold" value="{{ product.low_stock_threshold|default:'5' }}">
+                                        <div class="form-text">Get alerted when stock reaches this level.</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="track_inventory" 
+                                                   name="track_inventory" {% if product.track_inventory %}checked{% endif %}>
+                                            <label class="form-check-label" for="track_inventory">
+                                                Track Inventory
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="allow_backorders" 
+                                                   name="allow_backorders" {% if product.allow_backorders %}checked{% endif %}>
+                                            <label class="form-check-label" for="allow_backorders">
+                                                Allow Backorders
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="is_digital" 
+                                                   name="is_digital" {% if product.is_digital %}checked{% endif %}>
+                                            <label class="form-check-label" for="is_digital">
+                                                Digital Product
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SEO Tab -->
+                            <div class="tab-pane fade" id="seo" role="tabpanel">
+                                <div class="row">
+                                    <div class="col-12 mb-3">
+                                        <label for="meta_title" class="form-label">Meta Title</label>
+                                        <input type="text" class="form-control" id="meta_title" name="meta_title" 
+                                               value="{{ product.meta_title }}" maxlength="200">
+                                        <div class="form-text">Title for search engines (recommended: 50-60 characters).</div>
+                                        <div class="small text-muted mt-1" id="meta_title_count">0/200</div>
+                                    </div>
+                                    
+                                    <div class="col-12 mb-3">
+                                        <label for="meta_description" class="form-label">Meta Description</label>
+                                        <textarea class="form-control" id="meta_description" name="meta_description" 
+                                                  rows="3">{{ product.meta_description }}</textarea>
+                                        <div class="form-text">Description for search engines (recommended: 150-160 characters).</div>
+                                        <div class="small text-muted mt-1" id="meta_description_count">0/160</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="status" class="form-label">Status</label>
+                                        <select class="form-select" id="status" name="status">
+                                            {% for value, label in status_choices %}
+                                            <option value="{{ value }}" {% if value == product.status %}selected{% endif %}>
+                                                {{ label }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Visibility</label>
+                                        <div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="is_featured" 
+                                                       name="is_featured" {% if product.is_featured %}checked{% endif %}>
+                                                <label class="form-check-label" for="is_featured">
+                                                    Featured Product
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Form Actions -->
+                        <div class="row mt-4 border-top pt-4">
+                            <div class="col-md-6 mb-2">
+                                <a href="{% url 'bika:vendor_product_list' %}" class="btn btn-outline-secondary w-100">
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-save me-2"></i>Update Product
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="card border-danger mt-4">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Danger Zone
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">Once you delete a product, there is no going back. Please be certain.</p>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                        <i class="fas fa-trash me-2"></i>Delete Product
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{ product.name }}</strong>?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-warning me-2"></i>
+                    <strong>Warning:</strong> This action cannot be undone. All product data, images, and related information will be permanently deleted.
+                </div>
+                <form method="post" action="{% url 'bika:vendor_delete_product' product.id %}" id="deleteForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="confirm_name" class="form-label">
+                            Type <code>{{ product.name }}</code> to confirm:
+                        </label>
+                        <input type="text" class="form-control" id="confirm_name" name="confirm_name" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="deleteForm" class="btn btn-danger" id="confirmDeleteBtn" disabled>
+                    <i class="fas fa-trash me-2"></i>Delete Product
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.nav-tabs .nav-link {
+    font-weight: 500;
+    color: #6c757d;
+    border: none;
+    padding: 0.75rem 1rem;
+}
+
+.nav-tabs .nav-link.active {
+    color: #0d6efd;
+    border-bottom: 3px solid #0d6efd;
+    background-color: transparent;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #0d6efd;
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.card {
+    transition: transform 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Character counters for SEO fields
+    const metaTitleInput = document.getElementById('meta_title');
+    const metaDescInput = document.getElementById('meta_description');
+    const metaTitleCount = document.getElementById('meta_title_count');
+    const metaDescCount = document.getElementById('meta_description_count');
+    
+    function updateCharCount(input, counter) {
+        if (input && counter) {
+            const maxLength = counter.textContent.split('/')[1];
+            const currentLength = input.value.length;
+            counter.textContent = `${currentLength}/${maxLength}`;
+            
+            // Add warning color if near limit
+            if (currentLength > maxLength * 0.9) {
+                counter.style.color = '#dc3545';
+            } else {
+                counter.style.color = '#6c757d';
+            }
+        }
+    }
+    
+    if (metaTitleInput) {
+        metaTitleInput.addEventListener('input', function() {
+            updateCharCount(this, metaTitleCount);
+        });
+        updateCharCount(metaTitleInput, metaTitleCount);
+    }
+    
+    if (metaDescInput) {
+        metaDescInput.addEventListener('input', function() {
+            updateCharCount(this, metaDescCount);
+        });
+        updateCharCount(metaDescInput, metaDescCount);
+    }
+    
+    // Delete confirmation
+    const confirmNameInput = document.getElementById('confirm_name');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+    
+    if (confirmNameInput && confirmDeleteBtn) {
+        confirmNameInput.addEventListener('input', function() {
+            const productName = '{{ product.name|escapejs }}';
+            confirmDeleteBtn.disabled = this.value !== productName;
+        });
+    }
+    
+    // Form validation
+    const editForm = document.getElementById('editProductForm');
+    if (editForm) {
+        editForm.addEventListener('submit', function(e) {
+            // Basic validation
+            const price = parseFloat(document.getElementById('price').value);
+            const comparePrice = parseFloat(document.getElementById('compare_price').value) || 0;
+            
+            if (comparePrice > 0 && comparePrice <= price) {
+                e.preventDefault();
+                alert('Compare at price must be greater than the current price to show a discount.');
+                return false;
+            }
+            
+            // Validate SKU uniqueness (you might want to do this via AJAX)
+            const sku = document.getElementById('sku').value;
+            // You could add AJAX validation here
+            
+            return true;
+        });
+    }
+    
+    // Tab persistence (optional)
+    const hash = window.location.hash;
+    if (hash) {
+        const trigger = document.querySelector(`[data-bs-target="${hash}"]`);
+        if (trigger) {
+            const tab = new bootstrap.Tab(trigger);
+            tab.show();
+        }
+    }
+    
+    // Update URL when tabs change
+    const tabEls = document.querySelectorAll('button[data-bs-toggle="tab"]');
+    tabEls.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (e) {
+            const target = e.target.getAttribute('data-bs-target');
+            if (target) {
+                window.history.replaceState(null, null, target);
+            }
+        });
+    });
+    
+    // Image preview for new uploads
+    const newImagesInput = document.getElementById('new_images');
+    if (newImagesInput) {
+        newImagesInput.addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (files.length > 5) {
+                alert('Maximum 5 images can be uploaded at once.');
+                this.value = '';
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

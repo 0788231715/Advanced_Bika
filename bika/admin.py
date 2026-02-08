@@ -1,11 +1,11 @@
-# bika/admin.py - UPDATED AND CORRECTED VERSION
+# bika/admin.py - UPDATED WITH NEW MODELS
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
 from django.urls import path
 from django.utils import timezone
 from django.utils.html import format_html
-from django.db.models import Q,F, Count, Sum
+from django.db.models import Q, F, Count, Sum
 from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
@@ -20,12 +20,16 @@ def admin_dashboard(request):
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
+    week_start = today_start - timedelta(days=7)
+    month_start = today_start - timedelta(days=30)
     
     # User Statistics
     user_stats = {
         'total': CustomUser.objects.count(),
         'today': CustomUser.objects.filter(date_joined__gte=today_start).count(),
         'yesterday': CustomUser.objects.filter(date_joined__gte=yesterday_start, date_joined__lt=today_start).count(),
+        'week': CustomUser.objects.filter(date_joined__gte=week_start).count(),
+        'month': CustomUser.objects.filter(date_joined__gte=month_start).count(),
         'admins': CustomUser.objects.filter(user_type='admin').count(),
         'vendors': CustomUser.objects.filter(user_type='vendor', is_active=True).count(),
         'customers': CustomUser.objects.filter(user_type='customer', is_active=True).count(),
@@ -47,6 +51,7 @@ def admin_dashboard(request):
         'featured': Product.objects.filter(is_featured=True, status='active').count(),
         'digital': Product.objects.filter(is_digital=True).count(),
         'today': Product.objects.filter(created_at__gte=today_start).count(),
+        'week': Product.objects.filter(created_at__gte=week_start).count(),
     }
     
     # Order Statistics
@@ -58,7 +63,8 @@ def admin_dashboard(request):
         'delivered': Order.objects.filter(status='delivered').count(),
         'cancelled': Order.objects.filter(status='cancelled').count(),
         'today': Order.objects.filter(created_at__gte=today_start).count(),
-        'week': Order.objects.filter(created_at__gte=today_start - timedelta(days=7)).count(),
+        'week': Order.objects.filter(created_at__gte=week_start).count(),
+        'month': Order.objects.filter(created_at__gte=month_start).count(),
     }
     
     # Calculate revenue
@@ -69,6 +75,11 @@ def admin_dashboard(request):
             created_at__gte=today_start
         ) if order.total_amount
     )
+    week_revenue = sum(
+        order.total_amount for order in completed_orders.filter(
+            created_at__gte=week_start
+        ) if order.total_amount
+    )
     
     # Payment Statistics
     payment_stats = {
@@ -77,6 +88,7 @@ def admin_dashboard(request):
         'pending': Payment.objects.filter(status='pending').count(),
         'failed': Payment.objects.filter(status='failed').count(),
         'refunded': Payment.objects.filter(status='refunded').count(),
+        'today': Payment.objects.filter(created_at__gte=today_start).count(),
     }
     
     # Category Statistics
@@ -107,6 +119,9 @@ def admin_dashboard(request):
         'active_locations': StorageLocation.objects.filter(is_active=True).count(),
         'total_capacity': sum(location.capacity for location in StorageLocation.objects.all()),
         'total_occupancy': sum(location.current_occupancy for location in StorageLocation.objects.all()),
+        'occupancy_rate': round((sum(location.current_occupancy for location in StorageLocation.objects.all()) / 
+                               sum(location.capacity for location in StorageLocation.objects.all()) * 100), 2) 
+                               if sum(location.capacity for location in StorageLocation.objects.all()) > 0 else 0,
     }
     
     # Alert Stats
@@ -115,16 +130,74 @@ def admin_dashboard(request):
         'unresolved_alerts': ProductAlert.objects.filter(is_resolved=False).count(),
         'critical_alerts': ProductAlert.objects.filter(severity='critical', is_resolved=False).count(),
         'high_alerts': ProductAlert.objects.filter(severity='high', is_resolved=False).count(),
+        'medium_alerts': ProductAlert.objects.filter(severity='medium', is_resolved=False).count(),
+        'low_alerts': ProductAlert.objects.filter(severity='low', is_resolved=False).count(),
+    }
+    
+    # INVENTORY STATISTICS (NEW)
+    inventory_stats = {
+        'total': InventoryItem.objects.count(),
+        'active': InventoryItem.objects.filter(status='active').count(),
+        'reserved': InventoryItem.objects.filter(status='reserved').count(),
+        'sold': InventoryItem.objects.filter(status='sold').count(),
+        'low_stock': InventoryItem.objects.filter(status='active').filter(
+            quantity__lte=F('low_stock_threshold')
+        ).count(),
+        'near_expiry': InventoryItem.objects.filter(
+            expiry_date__gte=today_start.date(),
+            expiry_date__lte=today_start.date() + timedelta(days=30)
+        ).count(),
+        'expired': InventoryItem.objects.filter(
+            expiry_date__lt=today_start.date()
+        ).count(),
+        'total_value': InventoryItem.objects.aggregate(Sum('total_value'))['total_value__sum'] or 0,
+        'by_type': {
+            'storage': InventoryItem.objects.filter(item_type='storage').count(),
+            'sale': InventoryItem.objects.filter(item_type='sale').count(),
+            'rental': InventoryItem.objects.filter(item_type='rental').count(),
+        }
+    }
+    
+    # DELIVERY STATISTICS (NEW)
+    delivery_stats = {
+        'total': Delivery.objects.count(),
+        'pending': Delivery.objects.filter(status='pending').count(),
+        'processing': Delivery.objects.filter(status='processing').count(),
+        'in_transit': Delivery.objects.filter(status='in_transit').count(),
+        'delivered': Delivery.objects.filter(status='delivered').count(),
+        'cancelled': Delivery.objects.filter(status='cancelled').count(),
+        'today': Delivery.objects.filter(created_at__gte=today_start).count(),
+        'week': Delivery.objects.filter(created_at__gte=week_start).count(),
+        'late': Delivery.objects.filter(
+            status__in=['pending', 'processing', 'in_transit', 'out_for_delivery'],
+            estimated_delivery__lt=timezone.now()
+        ).count(),
+        'delivery_rate': round((Delivery.objects.filter(status='delivered').count() / 
+                               Delivery.objects.count() * 100), 2) if Delivery.objects.count() > 0 else 0,
+    }
+    
+    # USER ROLE STATISTICS (NEW)
+    role_stats = {
+        'total_roles': UserRole.objects.count(),
+        'by_role': {
+            'admin': UserRole.objects.filter(role='admin').count(),
+            'manager': UserRole.objects.filter(role='manager').count(),
+            'storage_staff': UserRole.objects.filter(role='storage_staff').count(),
+            'negotiation_team': UserRole.objects.filter(role='negotiation_team').count(),
+            'client': UserRole.objects.filter(role='client').count(),
+            'vendor': UserRole.objects.filter(role='vendor').count(),
+            'customer': UserRole.objects.filter(role='customer').count(),
+        }
     }
     
     # Recent Data
     recent_products = Product.objects.select_related(
         'vendor', 'category'
-    ).prefetch_related('images').order_by('-created_at')[:6]
+    ).prefetch_related('images').order_by('-created_at')[:8]
     
     recent_orders = Order.objects.select_related(
         'user'
-    ).order_by('-created_at')[:5]
+    ).order_by('-created_at')[:6]
     
     recent_messages = ContactMessage.objects.filter(
         status='new'
@@ -134,14 +207,38 @@ def admin_dashboard(request):
         is_resolved=False
     ).select_related('product').order_by('-created_at')[:5]
     
+    # NEW: Recent Inventory Items
+    recent_inventory = InventoryItem.objects.select_related(
+        'category', 'client', 'location'
+    ).order_by('-created_at')[:6]
+    
+    # NEW: Recent Deliveries
+    recent_deliveries = Delivery.objects.select_related(
+        'client', 'assigned_to'
+    ).order_by('-created_at')[:6]
+    
+    # NEW: Recent Inventory Changes
+    recent_inventory_changes = InventoryHistory.objects.select_related(
+        'item', 'user'
+    ).order_by('-timestamp')[:8]
+    
     # Activity Log (simplified)
     recent_activity = []
     
     # Get Django and Python version
     import django
     import sys
+    import platform
     django_version = django.get_version()
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    os_info = f"{platform.system()} {platform.release()}"
+    
+    # Performance metrics
+    total_users = user_stats['total']
+    total_products = product_stats['total']
+    total_orders = order_stats['total']
+    total_inventory = inventory_stats['total']
+    total_deliveries = delivery_stats['total']
     
     context = {
         # Statistics
@@ -153,16 +250,23 @@ def admin_dashboard(request):
         'fruit_stats': fruit_stats,
         'storage_stats': storage_stats,
         'alert_stats': alert_stats,
+        'inventory_stats': inventory_stats,  # NEW
+        'delivery_stats': delivery_stats,    # NEW
+        'role_stats': role_stats,           # NEW
         
         # Revenue
         'total_revenue': "{:,.2f}".format(total_revenue) if total_revenue else "0.00",
         'today_revenue': "{:,.2f}".format(today_revenue) if today_revenue else "0.00",
+        'week_revenue': "{:,.2f}".format(week_revenue) if week_revenue else "0.00",
         
         # Recent Data
         'recent_products': recent_products,
         'recent_orders': recent_orders,
         'recent_messages': recent_messages,
         'recent_alerts': recent_alerts,
+        'recent_inventory': recent_inventory,        # NEW
+        'recent_deliveries': recent_deliveries,      # NEW
+        'recent_inventory_changes': recent_inventory_changes,  # NEW
         'recent_activity': recent_activity,
         
         # Percentages for charts
@@ -172,6 +276,9 @@ def admin_dashboard(request):
         'active_products_percentage': round((product_stats['active'] / product_stats['total'] * 100), 2) if product_stats['total'] > 0 else 0,
         'active_users_percentage': round((user_stats['active'] / user_stats['total'] * 100), 2) if user_stats['total'] > 0 else 0,
         'completed_orders_percentage': round((order_stats['delivered'] / order_stats['total'] * 100), 2) if order_stats['total'] > 0 else 0,
+        'inventory_active_percentage': round((inventory_stats['active'] / inventory_stats['total'] * 100), 2) if inventory_stats['total'] > 0 else 0,
+        'delivery_success_percentage': delivery_stats['delivery_rate'],
+        'storage_occupancy_percentage': storage_stats['occupancy_rate'],
         
         # Service stats
         'total_services': Service.objects.count(),
@@ -182,11 +289,22 @@ def admin_dashboard(request):
         'featured_testimonials_count': Testimonial.objects.filter(is_featured=True, is_active=True).count(),
         'active_faqs_count': FAQ.objects.filter(is_active=True).count(),
         
+        # Performance metrics
+        'total_users': total_users,
+        'total_products': total_products,
+        'total_orders': total_orders,
+        'total_inventory': total_inventory,
+        'total_deliveries': total_deliveries,
+        'inventory_value': "{:,.2f}".format(inventory_stats['total_value']) if inventory_stats['total_value'] else "0.00",
+        
         # System info
         'django_version': django_version,
         'python_version': python_version,
+        'os_info': os_info,
         'debug': settings.DEBUG,
         'now': now,
+        'today': today_start.date(),
+        'server_time': now.strftime('%Y-%m-%d %H:%M:%S'),
     }
     
     return render(request, 'bika/pages/admin/dashboard.html', context)
@@ -375,8 +493,8 @@ class ProductCategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug', 'product_count', 'is_active', 'display_order']
     list_filter = ['is_active', 'parent']
     search_fields = ['name', 'description']
-    list_editable = ['display_order', 'is_active']  # These are in list_display
     prepopulated_fields = {'slug': ('name',)}
+    list_editable = ['display_order', 'is_active']  # These are in list_display
     
     def product_count(self, obj):
         return obj.products.count()
@@ -604,7 +722,7 @@ class StorageLocationAdmin(admin.ModelAdmin):
                    'available_capacity', 'occupancy_percentage', 'is_active']
     list_filter = ['is_active']
     search_fields = ['name', 'address']
-    list_editable = ['is_active']  # This is in list_display
+    list_editable = ['is_active']
     
     def address_short(self, obj):
         if len(obj.address) > 30:
@@ -613,22 +731,56 @@ class StorageLocationAdmin(admin.ModelAdmin):
     address_short.short_description = 'Address'
     
     def available_capacity(self, obj):
-        return obj.available_capacity if hasattr(obj, 'available_capacity') else 0
+        # Use the model's property directly
+        return obj.available_capacity
     available_capacity.short_description = 'Available'
     
     def occupancy_percentage(self, obj):
         if obj.capacity > 0:
+            # Calculate percentage
             percentage = (obj.current_occupancy / obj.capacity) * 100
-            color = 'success' if percentage < 80 else 'warning' if percentage < 95 else 'danger'
+            
+            # Format the percentage to 1 decimal place
+            percentage_formatted = f"{percentage:.1f}%"
+            
+            # Determine color based on occupancy
+            if percentage < 80:
+                color = 'success'
+            elif percentage < 95:
+                color = 'warning'
+            else:
+                color = 'danger'
+            
+            # Return formatted HTML with progress bar
             return format_html(
                 '<div class="progress" style="height: 20px; width: 100px;">'
                 '<div class="progress-bar bg-{}" role="progressbar" '
                 'style="width: {}%;" aria-valuenow="{}" aria-valuemin="0" '
-                'aria-valuemax="100">{:.1f}%</div></div>',
-                color, percentage, percentage, percentage
+                'aria-valuemax="100">{}</div></div>',
+                color, percentage, percentage, percentage_formatted
             )
         return '-'
     occupancy_percentage.short_description = 'Occupancy'
+    
+    # Optional: Add a custom change form to show occupancy info
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'address', 'latitude', 'longitude', 'is_active')
+        }),
+        ('Capacity Information', {
+            'fields': ('capacity', 'current_occupancy'),
+            'description': 'Set the total capacity and current occupancy of this storage location.'
+        }),
+    )
+    
+    # Optional: Add custom help text for capacity fields
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == 'capacity':
+            formfield.help_text = 'Maximum number of items this storage location can hold.'
+        elif db_field.name == 'current_occupancy':
+            formfield.help_text = 'Current number of items stored in this location.'
+        return formfield
 
 @admin.register(RealTimeSensorData)
 class RealTimeSensorDataAdmin(admin.ModelAdmin):
@@ -826,6 +978,404 @@ class FAQAdmin(admin.ModelAdmin):
         return obj.answer
     answer_short.short_description = 'Answer'
 
+# ==================== NEW MODELS ADMIN REGISTRATIONS ====================
+
+@admin.register(UserRole)
+class UserRoleAdmin(admin.ModelAdmin):
+    list_display = ['user', 'role', 'created_at', 'action_buttons']
+    list_filter = ['role', 'created_at']
+    search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name']
+    readonly_fields = ['created_at', 'updated_at']
+    list_per_page = 20
+    actions = ['assign_admin_role', 'assign_manager_role', 'assign_storage_staff_role']
+    
+    fieldsets = (
+        ('User Information', {
+            'fields': ('user', 'role')
+        }),
+        ('Permissions', {
+            'fields': ('permissions',),
+            'classes': ('collapse',),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    def action_buttons(self, obj):
+        return format_html(
+            '<a href="{}" class="button">View</a>',
+            reverse('admin:bika_userrole_change', args=[obj.id])
+        )
+    action_buttons.short_description = 'Actions'
+    
+    def assign_admin_role(self, request, queryset):
+        queryset.update(role='admin')
+        self.message_user(request, f"{queryset.count()} users assigned admin role.")
+    assign_admin_role.short_description = "Assign Admin Role"
+    
+    def assign_manager_role(self, request, queryset):
+        queryset.update(role='manager')
+        self.message_user(request, f"{queryset.count()} users assigned manager role.")
+    assign_manager_role.short_description = "Assign Manager Role"
+    
+    def assign_storage_staff_role(self, request, queryset):
+        queryset.update(role='storage_staff')
+        self.message_user(request, f"{queryset.count()} users assigned storage staff role.")
+    assign_storage_staff_role.short_description = "Assign Storage Staff Role"
+
+@admin.register(InventoryItem)
+class InventoryItemAdmin(admin.ModelAdmin):
+    list_display = ['name', 'sku', 'category', 'client', 'quantity', 'unit_price', 
+                   'total_value', 'status_badge', 'location', 'expiry_status', 
+                   'created_at', 'action_buttons']
+    list_filter = ['status', 'item_type', 'category', 'location', 'client', 'created_at', 'quality_rating']
+    search_fields = ['name', 'sku', 'description', 'storage_reference', 'client__username']
+    readonly_fields = ['created_at', 'updated_at', 'last_checked', 'total_value']
+    #list_editable = ['status', 'quantity', 'unit_price']
+    list_per_page = 20
+    actions = ['mark_as_active', 'mark_as_reserved', 'mark_as_sold', 'check_low_stock', 
+               'check_expiry', 'update_quality_rating']
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'sku', 'description', 'category', 'product')
+        }),
+        ('Inventory Details', {
+            'fields': ('quantity', 'unit_price', 'total_value', 'low_stock_threshold', 'reorder_point')
+        }),
+        ('Status & Type', {
+            'fields': ('item_type', 'status', 'quality_rating', 'condition_notes')
+        }),
+        ('Location & Storage', {
+            'fields': ('location', 'storage_reference', 'batch_number')
+        }),
+        ('Time Information', {
+            'fields': ('expiry_date', 'manufactured_date', 'last_checked', 'next_check_date')
+        }),
+        ('Ownership', {
+            'fields': ('client', 'added_by', 'checked_by')
+        }),
+        ('Dimensions', {
+            'fields': ('weight_kg', 'dimensions'),
+            'classes': ('collapse',),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    def status_badge(self, obj):
+        colors = {
+            'active': 'success',
+            'inactive': 'secondary',
+            'reserved': 'warning',
+            'sold': 'info',
+            'expired': 'danger',
+            'damaged': 'dark',
+            'returned': 'primary',
+        }
+        color = colors.get(obj.status, 'secondary')
+        return format_html(
+            '<span class="badge badge-{}">{}</span>',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    
+    def expiry_status(self, obj):
+        if obj.expiry_date:
+            days = obj.days_until_expiry
+            if days is not None:
+                if days <= 0:
+                    return format_html('<span class="badge badge-danger">Expired</span>')
+                elif days <= 7:
+                    return format_html('<span class="badge badge-warning">{} days</span>', days)
+                elif days <= 30:
+                    return format_html('<span class="badge badge-info">{} days</span>', days)
+                else:
+                    return format_html('<span class="badge badge-success">{} days</span>', days)
+        return format_html('<span class="badge badge-secondary">No expiry</span>')
+    expiry_status.short_description = 'Expiry'
+    
+    def action_buttons(self, obj):
+        return format_html(
+            '<a href="{}" class="button">View</a>',
+            reverse('admin:bika_inventoryitem_change', args=[obj.id])
+        )
+    action_buttons.short_description = 'Actions'
+    
+    def mark_as_active(self, request, queryset):
+        queryset.update(status='active')
+        self.message_user(request, f"{queryset.count()} items marked as active.")
+    mark_as_active.short_description = "Mark as active"
+    
+    def mark_as_reserved(self, request, queryset):
+        queryset.update(status='reserved')
+        self.message_user(request, f"{queryset.count()} items marked as reserved.")
+    mark_as_reserved.short_description = "Mark as reserved"
+    
+    def mark_as_sold(self, request, queryset):
+        queryset.update(status='sold')
+        self.message_user(request, f"{queryset.count()} items marked as sold.")
+    mark_as_sold.short_description = "Mark as sold"
+    
+    def check_low_stock(self, request, queryset):
+        low_stock_items = []
+        for item in queryset:
+            if item.is_low_stock:
+                low_stock_items.append(item)
+        
+        if low_stock_items:
+            self.message_user(
+                request, 
+                f"Found {len(low_stock_items)} items with low stock.",
+                messages.WARNING
+            )
+        else:
+            self.message_user(request, "No low stock items found.")
+    check_low_stock.short_description = "Check low stock"
+    
+    def check_expiry(self, request, queryset):
+        expired_items = []
+        near_expiry_items = []
+        for item in queryset:
+            if item.is_near_expiry:
+                if item.days_until_expiry <= 0:
+                    expired_items.append(item)
+                else:
+                    near_expiry_items.append(item)
+        
+        if expired_items:
+            self.message_user(
+                request, 
+                f"Found {len(expired_items)} expired items.",
+                messages.ERROR
+            )
+        if near_expiry_items:
+            self.message_user(
+                request, 
+                f"Found {len(near_expiry_items)} items near expiry.",
+                messages.WARNING
+            )
+        if not expired_items and not near_expiry_items:
+            self.message_user(request, "No expiry issues found.")
+    check_expiry.short_description = "Check expiry"
+    
+    def update_quality_rating(self, request, queryset):
+        # This is a placeholder for a more sophisticated quality update
+        queryset.update(quality_rating='good')
+        self.message_user(request, f"{queryset.count()} items updated with 'Good' quality rating.")
+    update_quality_rating.short_description = "Update quality rating"
+
+@admin.register(InventoryHistory)
+class InventoryHistoryAdmin(admin.ModelAdmin):
+    list_display = ['item', 'action_badge', 'user', 'quantity_change', 'timestamp']
+    list_filter = ['action', 'timestamp', 'user']
+    search_fields = ['item__name', 'item__sku', 'user__username', 'notes', 'reference_number']
+    readonly_fields = ['timestamp']
+    list_per_page = 30
+    
+    def action_badge(self, obj):
+        colors = {
+            'create': 'success',
+            'update': 'info',
+            'delete': 'danger',
+            'check_in': 'primary',
+            'check_out': 'warning',
+            'transfer': 'secondary',
+            'adjust': 'dark',
+            'reserve': 'info',
+            'release': 'warning',
+            'damage': 'danger',
+            'expire': 'dark',
+        }
+        color = colors.get(obj.action, 'secondary')
+        return format_html(
+            '<span class="badge badge-{}">{}</span>',
+            color, obj.get_action_display()
+        )
+    action_badge.short_description = 'Action'
+    
+    def quantity_change(self, obj):
+        if obj.previous_quantity is not None and obj.new_quantity is not None:
+            change = obj.new_quantity - obj.previous_quantity
+            if change > 0:
+                return format_html('<span style="color: green;">+{}</span>', change)
+            elif change < 0:
+                return format_html('<span style="color: red;">{}</span>', change)
+            else:
+                return format_html('<span>0</span>')
+        return '-'
+    quantity_change.short_description = 'Qty Change'
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        return False
+
+@admin.register(Delivery)
+class DeliveryAdmin(admin.ModelAdmin):
+    list_display = ['delivery_number', 'client_name', 'status_badge', 'estimated_delivery', 
+                   'actual_delivery', 'delivery_cost', 'payment_status_badge', 'created_at', 'action_buttons']
+    list_filter = ['status', 'payment_status', 'delivery_type', 'created_at', 'estimated_delivery']
+    search_fields = ['delivery_number', 'tracking_number', 'client_name', 'client_email', 
+                    'client_phone', 'delivery_address']
+    readonly_fields = ['created_at', 'updated_at', 'status_changed_at', 'delivery_number', 
+                      'tracking_number', 'total_cost']
+    #list_editable = ['status', 'payment_status']
+    list_per_page = 20
+    actions = ['mark_as_processing', 'mark_as_in_transit', 'mark_as_delivered', 'mark_as_cancelled',
+               'generate_tracking_numbers', 'update_delivery_status']
+    
+    fieldsets = (
+        ('Delivery Information', {
+            'fields': ('delivery_number', 'tracking_number', 'order', 'status')
+        }),
+        ('Client Information', {
+            'fields': ('client', 'client_name', 'client_address', 'client_phone', 'client_email')
+        }),
+        ('Delivery Details', {
+            'fields': ('delivery_address', 'delivery_city', 'delivery_state', 
+                      'delivery_country', 'delivery_postal_code')
+        }),
+        ('Delivery Instructions', {
+            'fields': ('special_instructions', 'delivery_type', 'delivery_window_start', 
+                      'delivery_window_end')
+        }),
+        ('Time Tracking', {
+            'fields': ('estimated_delivery', 'actual_delivery', 'scheduled_for', 
+                      'packed_at', 'shipped_at')
+        }),
+        ('Proof of Delivery', {
+            'fields': ('proof_of_delivery', 'proof_of_delivery_url', 'recipient_name', 
+                      'recipient_phone', 'recipient_signature', 'delivery_notes', 
+                      'delivery_photos')
+        }),
+        ('Cost & Payment', {
+            'fields': ('delivery_cost', 'delivery_tax', 'total_cost', 'payment_status', 
+                      'payment_method', 'insurance_amount')
+        }),
+        ('Delivery Agent', {
+            'fields': ('assigned_to', 'driver_name', 'driver_phone', 'vehicle_number')
+        }),
+        ('Package Information', {
+            'fields': ('package_count', 'total_weight', 'package_dimensions'),
+            'classes': ('collapse',),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'status_changed_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    def status_badge(self, obj):
+        colors = {
+            'pending': 'secondary',
+            'processing': 'info',
+            'packed': 'primary',
+            'in_transit': 'warning',
+            'out_for_delivery': 'warning',
+            'delivered': 'success',
+            'cancelled': 'danger',
+            'failed': 'dark',
+            'returned': 'dark',
+        }
+        color = colors.get(obj.status, 'secondary')
+        return format_html(
+            '<span class="badge badge-{}">{}</span>',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    
+    def payment_status_badge(self, obj):
+        colors = {
+            'pending': 'warning',
+            'partial': 'info',
+            'paid': 'success',
+            'overdue': 'danger',
+            'refunded': 'secondary',
+        }
+        color = colors.get(obj.payment_status, 'secondary')
+        return format_html(
+            '<span class="badge badge-{}">{}</span>',
+            color, obj.get_payment_status_display()
+        )
+    payment_status_badge.short_description = 'Payment'
+    
+    def action_buttons(self, obj):
+        return format_html(
+            '<a href="{}" class="button">View</a>',
+            reverse('admin:bika_delivery_change', args=[obj.id])
+        )
+    action_buttons.short_description = 'Actions'
+    
+    def mark_as_processing(self, request, queryset):
+        queryset.update(status='processing')
+        self.message_user(request, f"{queryset.count()} deliveries marked as processing.")
+    mark_as_processing.short_description = "Mark as processing"
+    
+    def mark_as_in_transit(self, request, queryset):
+        queryset.update(status='in_transit', shipped_at=timezone.now())
+        self.message_user(request, f"{queryset.count()} deliveries marked as in transit.")
+    mark_as_in_transit.short_description = "Mark as in transit"
+    
+    def mark_as_delivered(self, request, queryset):
+        queryset.update(status='delivered', actual_delivery=timezone.now())
+        self.message_user(request, f"{queryset.count()} deliveries marked as delivered.")
+    mark_as_delivered.short_description = "Mark as delivered"
+    
+    def mark_as_cancelled(self, request, queryset):
+        queryset.update(status='cancelled')
+        self.message_user(request, f"{queryset.count()} deliveries marked as cancelled.")
+    mark_as_cancelled.short_description = "Mark as cancelled"
+    
+    def generate_tracking_numbers(self, request, queryset):
+        import random
+        import string
+        updated = 0
+        for delivery in queryset:
+            if not delivery.tracking_number:
+                random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+                delivery.tracking_number = f"TRK{random_str}"
+                delivery.save()
+                updated += 1
+        self.message_user(request, f"Generated tracking numbers for {updated} deliveries.")
+    generate_tracking_numbers.short_description = "Generate tracking numbers"
+    
+    def update_delivery_status(self, request, queryset):
+        # This would typically integrate with a delivery service API
+        self.message_user(request, f"Updated status for {queryset.count()} deliveries (simulated).")
+    update_delivery_status.short_description = "Update delivery status"
+
+@admin.register(DeliveryItem)
+class DeliveryItemAdmin(admin.ModelAdmin):
+    list_display = ['delivery', 'item', 'quantity', 'unit_price', 'total_price', 'delivered_quality']
+    list_filter = ['delivery__status', 'delivered_quality']
+    search_fields = ['delivery__delivery_number', 'item__name', 'item__sku']
+    list_editable = ['quantity', 'unit_price', 'delivered_quality']
+    list_per_page = 20
+    
+    def total_price(self, obj):
+        return f"${obj.total_price:.2f}"
+    total_price.short_description = 'Total'
+
+@admin.register(DeliveryStatusHistory)
+class DeliveryStatusHistoryAdmin(admin.ModelAdmin):
+    list_display = ['delivery', 'from_status', 'to_status', 'changed_by', 'location', 'timestamp']
+    list_filter = ['timestamp', 'changed_by']
+    search_fields = ['delivery__delivery_number', 'changed_by__username', 'location', 'notes']
+    readonly_fields = ['timestamp']
+    list_per_page = 30
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        return False
+
 # ==================== ADD DASHBOARD TO ADMIN ====================
 
 # Add dashboard to admin URLs
@@ -846,8 +1396,8 @@ def custom_get_urls():
     return get_admin_urls() + original_get_urls()
 
 admin.site.get_urls = custom_get_urls
-
 # Customize admin site
 admin.site.site_header = "Bika Admin Dashboard"
 admin.site.site_title = "Bika Admin"
 admin.site.index_title = "Welcome to Bika Administration"
+

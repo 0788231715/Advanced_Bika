@@ -1,0 +1,120 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Review Order #{{ order.order_number }} - Bika{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-star me-2"></i>Review Your Order
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <h5>Order #{{ order.order_number }}</h5>
+                        <p class="text-muted">Please rate the products you purchased</p>
+                    </div>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        {% for item in items_to_review %}
+                        <div class="card mb-3 border">
+                            <div class="card-body">
+                                <div class="row align-items-center">
+                                    <div class="col-md-3">
+                                        {% if item.product.images.first %}
+                                        <img src="{{ item.product.images.first.image.url }}" 
+                                             alt="{{ item.product.name }}"
+                                             class="img-fluid rounded"
+                                             style="max-height: 100px; object-fit: cover;">
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-9">
+                                        <h6 class="mb-1">{{ item.product.name }}</h6>
+                                        <p class="text-muted small mb-2">
+                                            Quantity: {{ item.quantity }} × ${{ item.price|floatformat:2 }}
+                                        </p>
+                                        
+                                        <!-- Rating -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Your Rating:</label>
+                                            <div class="rating-stars">
+                                                {% for i in "12345" %}
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" 
+                                                           type="radio" 
+                                                           name="rating_{{ item.product.id }}" 
+                                                           id="rating_{{ item.product.id }}_{{ i }}"
+                                                           value="{{ i }}"
+                                                           required>
+                                                    <label class="form-check-label" for="rating_{{ item.product.id }}_{{ i }}">
+                                                        {{ i }} <i class="fas fa-star text-warning"></i>
+                                                    </label>
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Comment -->
+                                        <div class="mb-0">
+                                            <label for="comment_{{ item.product.id }}" class="form-label">Your Review (Optional):</label>
+                                            <textarea class="form-control" 
+                                                      id="comment_{{ item.product.id }}" 
+                                                      name="comment_{{ item.product.id }}" 
+                                                      rows="2"
+                                                      placeholder="Share your thoughts about this product..."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+                            <h5>All items have been reviewed!</h5>
+                            <p class="text-muted">You have already reviewed all items in this order.</p>
+                            <a href="{% url 'bika:order_detail' order.id %}" class="btn btn-primary">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Order
+                            </a>
+                        </div>
+                        {% endfor %}
+                        
+                        {% if items_to_review %}
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{% url 'bika:order_detail' order.id %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Order
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-paper-plane me-2"></i>Submit Review
+                            </button>
+                        </div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.rating-stars .form-check-input:checked + .form-check-label {
+    font-weight: bold;
+    color: #ffc107;
+}
+
+.rating-stars .form-check-input {
+    cursor: pointer;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s ease;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+</style>
+{% endblock %}
