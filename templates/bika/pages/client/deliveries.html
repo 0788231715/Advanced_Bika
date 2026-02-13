@@ -1,0 +1,116 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}My Deliveries - Bika Client{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for client navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-truck me-2"></i>My Deliveries</h2>
+                <a href="{% url 'bika:create_client_request' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Request New Delivery
+                </a>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">All Deliveries</h5>
+                    <div class="input-group w-25">
+                        <input type="text" class="form-control form-control-sm" placeholder="Search deliveries..." aria-label="Search deliveries">
+                        <button class="btn btn-outline-secondary btn-sm" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if deliveries %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Delivery #</th>
+                                    <th>Order #</th>
+                                    <th>Status</th>
+                                    <th>Est. Delivery</th>
+                                    <th>Tracking #</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for delivery in deliveries %}
+                                <tr>
+                                    <td><strong>{{ delivery.delivery_number }}</strong></td>
+                                    <td>
+                                        <a href="{% url 'bika:order_detail' delivery.order.id %}" class="text-decoration-none">
+                                            {{ delivery.order.order_number }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if delivery.status == 'delivered' %}success{% elif delivery.status == 'in_transit' %}info{% elif delivery.status == 'pending' %}warning{% else %}danger{% endif %}">
+                                            {{ delivery.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ delivery.estimated_delivery|date:"M d, Y" }}</td>
+                                    <td>
+                                        {% if delivery.tracking_number %}
+                                            <a href="#" class="text-decoration-none">{{ delivery.tracking_number }}</a>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'bika:client_delivery_detail' delivery.id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-eye me-1"></i>View Details
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-truck-loading fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No deliveries found for your account.</p>
+                        <a href="{% url 'bika:create_client_request' %}" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Request Your First Delivery
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Delivery Statistics -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Delivery Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-4 mb-3">
+                            <h4 class="text-primary">{{ total_deliveries }}</h4>
+                            <p class="text-muted small">Total Deliveries</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h4 class="text-success">{{ delivered_count }}</h4>
+                            <p class="text-muted small">Delivered</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h4 class="text-warning">{{ in_transit_count }}</h4>
+                            <p class="text-muted small">In Transit</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

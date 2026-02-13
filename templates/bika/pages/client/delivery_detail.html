@@ -1,0 +1,216 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Delivery Details - {{ delivery.delivery_number }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .delivery-status-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .status-timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+    .status-timeline:before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 10px;
+        width: 2px;
+        height: 100%;
+        background: #e9ecef;
+    }
+    .timeline-item {
+        position: relative;
+        margin-bottom: 20px;
+    }
+    .timeline-item:last-child {
+        margin-bottom: 0;
+    }
+    .timeline-badge {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 20px;
+        height: 20px;
+        background: #007bff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.8rem;
+        z-index: 1;
+    }
+    .timeline-content {
+        padding-left: 30px;
+    }
+    .status-pending .timeline-badge { background-color: #ffc107; }
+    .status-processing .timeline-badge { background-color: #17a2b8; }
+    .status-packed .timeline-badge { background-color: #6c757d; }
+    .status-in_transit .timeline-badge { background-color: #007bff; }
+    .status-out_for_delivery .timeline-badge { background-color: #28a745; }
+    .status-delivered .timeline-badge { background-color: #28a745; }
+    .status-cancelled .timeline-badge, .status-failed .timeline-badge { background-color: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        {% include 'bika/partials/user_sidebar.html' %} {# Assuming this sidebar exists for client navigation #}
+
+        <div class="col-md-9">
+            <h2 class="mb-4">Delivery Details: {{ delivery.delivery_number }}</h2>
+
+            <div class="row">
+                {# Delivery Overview #}
+                <div class="col-lg-6">
+                    <div class="delivery-status-card">
+                        <h5 class="mb-3">Overview</h5>
+                        <p><strong>Tracking Number:</strong> {{ delivery.tracking_number|default:"N/A" }}</p>
+                        <p><strong>Order:</strong> <a href="{% url 'bika:order_detail' delivery.order.id %}">{{ delivery.order.order_number }}</a></p>
+                        <p><strong>Current Status:</strong> <span id="current-delivery-status" class="badge bg-primary">{{ delivery.get_status_display }}</span></p>
+                        <p><strong>Estimated Delivery:</strong> {{ delivery.estimated_delivery|date:"M d, Y H:i" }}</p>
+                        <p><strong>Actual Delivery:</strong> {% if delivery.actual_delivery %}{{ delivery.actual_delivery|date:"M d, Y H:i" }}{% else %}Pending{% endif %}</p>
+                        <p><strong>Delivery Address:</strong> {{ delivery.delivery_address }}</p>
+                        <p><strong>Special Instructions:</strong> {% if delivery.special_instructions %}{{ delivery.special_instructions }}{% else %}None{% endif %}</p>
+                        <a href="{% url 'bika:track_order_map' delivery.id %}" class="btn btn-sm btn-outline-info mt-2">View on Map</a>
+                    </div>
+                </div>
+
+                {# Status Timeline #}
+                <div class="col-lg-6">
+                    <div class="delivery-status-card">
+                        <h5 class="mb-3">Status History</h5>
+                        <div id="status-timeline" class="status-timeline">
+                            {% for history in status_history %}
+                            <div class="timeline-item status-{{ history.to_status }}">
+                                <div class="timeline-badge">
+                                    <i class="fas fa-check"></i>
+                                </div>
+                                <div class="timeline-content">
+                                    <p class="mb-0"><strong>{{ history.get_to_status_display }}</strong></p>
+                                    <small class="text-muted">{{ history.timestamp|date:"M d, Y H:i" }}</small>
+                                    {% if history.notes %}<p class="text-secondary mb-0">{{ history.notes }}</p>{% endif %}
+                                    {% if history.location %}<small class="text-info">{{ history.location }}</small>{% endif %}
+                                </div>
+                            </div>
+                            {% empty %}
+                            <p>No status updates yet.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Delivery Items #}
+            <div class="delivery-status-card">
+                <h5 class="mb-3">Items in Delivery</h5>
+                {% if delivery_items %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>SKU</th>
+                                <th>Quantity</th>
+                                <th>Unit Price</th>
+                                <th>Total Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in delivery_items %}
+                            <tr>
+                                <td>{{ item.item.name }}</td>
+                                <td>{{ item.item.sku }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>${{ item.unit_price|floatformat:2 }}</td>
+                                <td>${{ item.total_price|floatformat:2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>No items associated with this delivery.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const deliveryId = "{{ delivery.id }}";
+        const currentStatusElement = document.getElementById('current-delivery-status');
+        const statusTimelineElement = document.getElementById('status-timeline');
+        let lastStatus = currentStatusElement ? currentStatusElement.textContent : '';
+
+        function fetchDeliveryStatus() {
+            fetch(`/api/delivery-status/${deliveryId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.status_data) {
+                        const newStatus = data.status_data.current_status;
+                        const newStatusCode = data.status_data.current_status_code;
+                        const newUpdatedAt = new Date(data.status_data.updated_at).toLocaleString();
+                        const latestMessage = data.status_data.latest_update_message || '';
+                        const latestLocation = data.status_data.latest_update_location || '';
+
+                        // Update current status badge
+                        if (currentStatusElement && newStatus !== lastStatus) {
+                            currentStatusElement.textContent = newStatus;
+                            currentStatusElement.className = `badge bg-${getStatusBadgeClass(newStatusCode)}`;
+                            lastStatus = newStatus;
+
+                            // Add new item to timeline if it's a new status
+                            if (statusTimelineElement) {
+                                const timelineItem = document.createElement('div');
+                                timelineItem.className = `timeline-item status-${newStatusCode}`;
+                                timelineItem.innerHTML = `
+                                    <div class="timeline-badge"><i class="fas fa-check"></i></div>
+                                    <div class="timeline-content">
+                                        <p class="mb-0"><strong>${newStatus}</strong></p>
+                                        <small class="text-muted">${newUpdatedAt}</small>
+                                        ${latestMessage ? `<p class="text-secondary mb-0">${latestMessage}</p>` : ''}
+                                        ${latestLocation ? `<small class="text-info">${latestLocation}</small>` : ''}
+                                    </div>
+                                `;
+                                statusTimelineElement.prepend(timelineItem); // Add to the top
+                            }
+                        }
+                    }
+                })
+                .catch(error => console.error('Error fetching delivery status:', error));
+        }
+
+        // Helper to get Bootstrap badge class based on status code
+        function getStatusBadgeClass(statusCode) {
+            switch(statusCode) {
+                case 'pending': return 'warning';
+                case 'processing': return 'info';
+                case 'packed': return 'secondary';
+                case 'in_transit': return 'primary';
+                case 'out_for_delivery': return 'success';
+                case 'delivered': return 'success';
+                case 'cancelled':
+                case 'failed': return 'danger';
+                default: return 'primary';
+            }
+        }
+
+        // Poll every 10 seconds if not delivered or cancelled/failed
+        if (!["delivered", "cancelled", "failed"].includes("{{ delivery.status }}")) {
+            setInterval(fetchDeliveryStatus, 10000); // 10 seconds
+        }
+    });
+</script>
+{% endblock %}

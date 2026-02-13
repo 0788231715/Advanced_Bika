@@ -857,20 +857,20 @@ class FruitRipenessPredictor:
 
 
 class EthyleneMonitor:
-    """Monitor ethylene production and effects on fruits"""
+    """Monitor ethylene production and effects on fruits, acting as a predictor."""
     
     def __init__(self):
         self.ethylene_producers = {
-            'Apple': 'high',
-            'Banana': 'high',
-            'Tomato': 'high',
-            'Avocado': 'high',
-            'Pear': 'medium',
-            'Peach': 'medium',
-            'Plum': 'medium',
-            'Papaya': 'medium',
-            'Mango': 'medium',
-            'Kiwi': 'low',
+            'Apple': {'level': 'high', 'production_rate': 100}, # µL/kg/hour
+            'Banana': {'level': 'high', 'production_rate': 100},
+            'Tomato': {'level': 'high', 'production_rate': 100},
+            'Avocado': {'level': 'high', 'production_rate': 100},
+            'Pear': {'level': 'medium', 'production_rate': 50},
+            'Peach': {'level': 'medium', 'production_rate': 50},
+            'Plum': {'level': 'medium', 'production_rate': 50},
+            'Papaya': {'level': 'medium', 'production_rate': 50},
+            'Mango': {'level': 'medium', 'production_rate': 50},
+            'Kiwi': {'level': 'low', 'production_rate': 20},
         }
         
         self.ethylene_sensitive = {
@@ -888,6 +888,31 @@ class EthyleneMonitor:
         
         self.ethylene_absorbers = ['Apple', 'Banana', 'Tomato']
         
+    def load_model(self, model_path: str) -> bool:
+        """
+        Loads updated ethylene configurations/rules from a file.
+        For a rule-based system, this might involve loading a JSON or pickle
+        file containing updated self.ethylene_producers, self.ethylene_sensitive, etc.
+        """
+        try:
+            if not os.path.exists(model_path):
+                logger.warning(f"EthyleneMonitor config file not found: {model_path}. Using default rules.")
+                return False
+            
+            with open(model_path, 'rb') as f:
+                loaded_data = joblib.load(f) # Using joblib for consistency
+            
+            if 'ethylene_producers' in loaded_data:
+                self.ethylene_producers.update(loaded_data['ethylene_producers'])
+            if 'ethylene_sensitive' in loaded_data:
+                self.ethylene_sensitive.update(loaded_data['ethylene_sensitive'])
+            # ... update other configurations
+            logger.info(f"EthyleneMonitor loaded custom configuration from {model_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error loading EthyleneMonitor configuration from {model_path}: {e}")
+            return False
+
     def check_compatibility(self, fruit1, fruit2, distance_cm=50):
         """Check if two fruits can be stored together"""
         fruit1 = fruit1.capitalize()
@@ -897,22 +922,26 @@ class EthyleneMonitor:
         if fruit1 == fruit2:
             return True, "Same fruit type - compatible"
         
-        producer1 = self.ethylene_producers.get(fruit1)
-        producer2 = self.ethylene_producers.get(fruit2)
+        producer1_info = self.ethylene_producers.get(fruit1)
+        producer2_info = self.ethylene_producers.get(fruit2)
+        
+        producer1_level = producer1_info['level'] if producer1_info else None
+        producer2_level = producer2_info['level'] if producer2_info else None
+
         sensitive1 = self.ethylene_sensitive.get(fruit1)
         sensitive2 = self.ethylene_sensitive.get(fruit2)
         
         # Check for incompatibility
-        if producer1 and sensitive2:
-            severity = self._get_incompatibility_severity(producer1, sensitive2, distance_cm)
+        if producer1_level and sensitive2:
+            severity = self._get_incompatibility_severity(producer1_level, sensitive2, distance_cm)
             return False, f"{fruit1} (ethylene producer) incompatible with {fruit2} (ethylene sensitive) - Severity: {severity}"
         
-        if producer2 and sensitive1:
-            severity = self._get_incompatibility_severity(producer2, sensitive1, distance_cm)
+        if producer2_level and sensitive1:
+            severity = self._get_incompatibility_severity(producer2_level, sensitive1, distance_cm)
             return False, f"{fruit2} (ethylene producer) incompatible with {fruit1} (ethylene sensitive) - Severity: {severity}"
         
         # Check if both are high producers
-        if producer1 == 'high' and producer2 == 'high':
+        if producer1_level == 'high' and producer2_level == 'high':
             return True, "Both are ethylene producers - store in ventilated area"
         
         return True, "Compatible for storage"
@@ -943,8 +972,9 @@ class EthyleneMonitor:
         fruit_type = fruit_type.capitalize()
         tips = []
         
-        if fruit_type in self.ethylene_producers:
-            level = self.ethylene_producers[fruit_type]
+        producer_info = self.ethylene_producers.get(fruit_type)
+        if producer_info:
+            level = producer_info['level']
             tips.append(f"{fruit_type} is a {level} ethylene producer")
             tips.append("Store separately from ethylene-sensitive produce")
             tips.append("Use ethylene absorbers in storage containers")
@@ -971,39 +1001,85 @@ class EthyleneMonitor:
         
         return tips
     
-    def calculate_ethylene_accumulation(self, producers, volume_m3, ventilation_rate=1.0):
-        """Calculate ethylene accumulation in storage area"""
-        # Simplified ethylene accumulation model
-        production_rates = {'high': 100, 'medium': 50, 'low': 20}  # µL/kg/hour
+    def predict_ethylene_risk(self, fruit_type: str, ethylene_level: float, 
+                              producers_in_area: List[str], volume_m3: float = 100.0, 
+                              ventilation_rate: float = 1.0) -> Dict[str, Any]:
+        """
+        Predicts ethylene accumulation risk and provides recommendations.
+        This acts as the primary prediction method for the EthyleneMonitor.
+        """
+        fruit_type = fruit_type.capitalize()
         
+        # Calculate background accumulation from other producers in the area
         total_production = 0
-        for fruit in producers:
-            rate = production_rates.get(self.ethylene_producers.get(fruit, 'low'), 20)
-            total_production += rate
+        for producer_fruit in producers_in_area:
+            producer_fruit_cap = producer_fruit.capitalize()
+            producer_info = self.ethylene_producers.get(producer_fruit_cap)
+            if producer_info:
+                total_production += producer_info['production_rate']
         
-        # Ethylene concentration in ppm
-        concentration = (total_production / volume_m3) / ventilation_rate
+        # Ethylene concentration in ppm (simplified, assumes weight)
+        # We can use the directly measured ethylene_level for immediate risk assessment
         
-        # Risk levels
-        if concentration > 100:
-            risk = 'Critical'
-            action = 'Immediate ventilation required'
-        elif concentration > 50:
-            risk = 'High'
-            action = 'Increase ventilation'
-        elif concentration > 20:
-            risk = 'Medium'
-            action = 'Monitor closely'
+        concentration = ethylene_level # Using measured level as primary input
+        
+        # If no direct measurement, estimate from producers and accumulation
+        if concentration <= 0 and total_production > 0:
+             # Very simplified accumulation logic, better to have a sensor reading
+            concentration = (total_production / volume_m3) / ventilation_rate 
+            concentration = round(concentration, 2)
+            if concentration > 50: # Cap estimated concentration
+                concentration = 50.0
+
+        risk_level = 'Low'
+        confidence = 0.9
+        recommendations = []
+
+        # Determine risk and recommendations
+        if concentration > 100: # Very high risk
+            risk_level = 'Critical'
+            confidence = 0.95
+            recommendations.append('IMMEDIATE: High ethylene concentration detected. Initiate maximum ventilation.')
+            recommendations.append('Remove known ethylene producers or relocate sensitive produce.')
+        elif concentration > 50: # High risk
+            risk_level = 'High'
+            confidence = 0.9
+            recommendations.append('High ethylene concentration detected. Increase ventilation and monitor closely.')
+            recommendations.append('Inspect produce for accelerated ripening or spoilage.')
+        elif concentration > 20: # Medium risk
+            risk_level = 'Medium'
+            confidence = 0.8
+            recommendations.append('Elevated ethylene levels. Ensure adequate ventilation. Separate sensitive produce.')
         else:
-            risk = 'Low'
-            action = 'Acceptable levels'
+            recommendations.append('Ethylene levels are within acceptable range.')
+        
+        # Fruit-specific sensitivity
+        if fruit_type in self.ethylene_sensitive:
+            sensitive_level = self.ethylene_sensitive[fruit_type]
+            if sensitive_level == 'very_high' and concentration > 5:
+                risk_level = 'High' if risk_level == 'Low' else risk_level # Upgrade risk if sensitive
+                recommendations.append(f'WARNING: {fruit_type} is very ethylene-sensitive. Even moderate levels can cause issues.')
+            elif sensitive_level == 'high' and concentration > 10:
+                risk_level = 'Medium' if risk_level == 'Low' else risk_level
+                recommendations.append(f'WARNING: {fruit_type} is ethylene-sensitive. Monitor for premature ripening.')
+        
+        # Add general tips
+        recommendations.extend(self.get_ethylene_management_tips(fruit_type))
         
         return {
-            'ethylene_concentration_ppm': round(concentration, 2),
-            'risk_level': risk,
-            'recommended_action': action,
-            'production_rate': total_production,
-            'ventilation_effectiveness': ventilation_rate
+            'type': 'ethylene',
+            'predicted_value': f"{risk_level} Risk ({concentration} ppm)",
+            'risk_level': risk_level,
+            'ethylene_concentration_ppm': concentration,
+            'confidence': confidence,
+            'input_conditions': {
+                'fruit_type': fruit_type,
+                'ethylene_level_measured': ethylene_level,
+                'producers_in_area': producers_in_area,
+                'volume_m3': volume_m3,
+                'ventilation_rate': ventilation_rate
+            },
+            'recommendations': list(set(recommendations)) # Remove duplicates
         }
 
 
@@ -1249,6 +1325,213 @@ class FruitPricePredictor:
 
 # ==================== MAIN AI SERVICE ====================
 
+class ShelfLifePredictor:
+    """Predicts remaining shelf life and optimal storage conditions for fruits."""
+
+    def __init__(self):
+        # Base shelf life (days) for various fruits under optimal conditions
+        # This can be made configurable or loaded from a database
+        self.base_shelf_lives = {
+            'Banana': {'min': 7, 'max': 14, 'optimal_temp': 13, 'optimal_humidity': 90, 'ethylene_sensitive': True, 'climacteric': True},
+            'Apple': {'min': 30, 'max': 180, 'optimal_temp': 1, 'optimal_humidity': 90, 'ethylene_sensitive': False, 'climacteric': True},
+            'Orange': {'min': 21, 'max': 45, 'optimal_temp': 5, 'optimal_humidity': 90, 'ethylene_sensitive': False, 'climacteric': False},
+            'Mango': {'min': 7, 'max': 21, 'optimal_temp': 13, 'optimal_humidity': 90, 'ethylene_sensitive': True, 'climacteric': True},
+            'Tomato': {'min': 7, 'max': 14, 'optimal_temp': 13, 'optimal_humidity': 90, 'ethylene_sensitive': True, 'climacteric': True},
+            'Strawberry': {'min': 3, 'max': 7, 'optimal_temp': 0, 'optimal_humidity': 95, 'ethylene_sensitive': False, 'climacteric': False},
+            'Avocado': {'min': 4, 'max': 10, 'optimal_temp': 7, 'optimal_humidity': 90, 'ethylene_sensitive': True, 'climacteric': True},
+        }
+
+        # Temperature effects: multiplier on shelf life (lower temp, higher multiplier up to a point)
+        self.temp_factors = {
+            'optimal': lambda temp, optimal: 1.0 if abs(temp - optimal) <= 2 else (0.8 if abs(temp - optimal) <= 5 else 0.5),
+            'very_low': 0.3, # chilling injury risk
+            'high': 0.6, # accelerated decay
+            'very_high': 0.2,
+        }
+
+        # Humidity effects: multiplier on shelf life
+        self.humidity_factors = {
+            'optimal': lambda hum: 1.0 if 85 <= hum <= 95 else (0.8 if 70 <= hum <= 85 or 95 < hum <= 98 else 0.6),
+            'low': 0.5, # dehydration
+            'very_low': 0.3,
+            'high': 0.7, # mold risk
+            'very_high': 0.4,
+        }
+
+        # Ethylene effects: multiplier on shelf life for climacteric fruits
+        self.ethylene_factors = {
+            'low': 1.0,
+            'medium': 0.8,
+            'high': 0.5,
+            'very_high': 0.3,
+        }
+
+        # CO2 effects: multiplier on shelf life (high CO2 can extend for some)
+        self.co2_factors = {
+            'low': 1.0,
+            'medium': 1.1, # beneficial for some fruits
+            'high': 1.2, # CA storage levels
+        }
+
+    def load_model(self, model_path: str) -> bool:
+        """
+        Loads a pre-trained shelf life model or configuration from a file.
+        For this rule-based predictor, it might load updated rules or base_shelf_lives.
+        """
+        try:
+            if not os.path.exists(model_path):
+                logger.warning(f"Shelf life model file not found: {model_path}. Using default rules.")
+                return False
+            
+            # Example: Load updated base_shelf_lives or factors from a JSON/pickle file
+            with open(model_path, 'rb') as f:
+                loaded_data = joblib.load(f) # Using joblib for consistency
+            
+            if 'base_shelf_lives' in loaded_data:
+                self.base_shelf_lives.update(loaded_data['base_shelf_lives'])
+            if 'temp_factors' in loaded_data:
+                self.temp_factors.update(loaded_data['temp_factors'])
+            # ... update other factors as needed
+            logger.info(f"ShelfLifePredictor loaded custom configuration from {model_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error loading ShelfLifePredictor configuration from {model_path}: {e}")
+            return False
+
+    def predict_shelf_life(self, product: Any, sensor_data: Dict[str, float]) -> Dict[str, Any]:
+        """
+        Predicts the remaining shelf life of a product based on its type, age,
+        and current environmental conditions.
+        """
+        fruit_type = product.fruit_type.name if hasattr(product.fruit_type, 'name') else str(product.fruit_type)
+        fruit_type = fruit_type.capitalize()
+
+        base_info = self.base_shelf_lives.get(fruit_type)
+        if not base_info:
+            return {
+                'predicted_days_remaining': 0,
+                'predicted_expiry_date': None,
+                'status': 'Unknown',
+                'confidence': 0.0,
+                'recommendations': [f"No shelf life data for {fruit_type}. Add to configuration."]
+            }
+
+        # Get relevant data points
+        current_temp = sensor_data.get('temperature', base_info['optimal_temp'])
+        current_humidity = sensor_data.get('humidity', base_info['optimal_humidity'])
+        ethylene_level = sensor_data.get('ethylene_level', 0.0) # ppm
+        co2_level = sensor_data.get('co2_level', 400.0) # ppm
+        
+        harvest_date = getattr(product, 'harvest_date', None)
+        production_date = getattr(product, 'production_date', None)
+
+        if not harvest_date and not production_date:
+            # Fallback for products without a specific start date
+            age_in_days = 0 
+            logger.warning(f"No harvest_date or production_date for product {product.id}. Assuming fresh.")
+        else:
+            start_date = harvest_date if harvest_date else production_date
+            age_in_days = (timezone.now().date() - start_date).days
+
+        # Start with max base shelf life days
+        estimated_shelf_life_days = base_info['max']
+
+        # Apply factors based on current conditions
+        # Temperature Factor
+        temp_factor_val = 1.0
+        if current_temp < (base_info['optimal_temp'] - 5): # Very low temp, chilling injury risk
+            temp_factor_val = self.temp_factors['very_low']
+        elif current_temp > (base_info['optimal_temp'] + 5): # High temp, accelerated decay
+            temp_factor_val = self.temp_factors['high']
+        elif current_temp > (base_info['optimal_temp'] + 10): # Very high temp
+            temp_factor_val = self.temp_factors['very_high']
+        else: # Near optimal
+            temp_factor_val = self.temp_factors['optimal'](current_temp, base_info['optimal_temp'])
+        estimated_shelf_life_days *= temp_factor_val
+
+        # Humidity Factor
+        hum_factor_val = self.humidity_factors['optimal'](current_humidity)
+        estimated_shelf_life_days *= hum_factor_val
+        
+        # Ethylene Factor (only for climacteric and sensitive fruits)
+        if base_info['climacteric'] and base_info['ethylene_sensitive']:
+            if ethylene_level > 10: # High ethylene
+                estimated_shelf_life_days *= self.ethylene_factors['high']
+            elif ethylene_level > 1: # Medium ethylene
+                estimated_shelf_life_days *= self.ethylene_factors['medium']
+        
+        # CO2 Factor (simplified for general benefits or detriments)
+        if co2_level > 5000: # High CO2, potentially beneficial for CA storage
+             estimated_shelf_life_days *= self.co2_factors['high']
+        elif co2_level > 1000:
+             estimated_shelf_life_days *= self.co2_factors['medium']
+
+        # Reduce by age
+        predicted_days_remaining = max(0, int(estimated_shelf_life_days) - age_in_days)
+        predicted_expiry_date = timezone.now().date() + timedelta(days=predicted_days_remaining)
+
+        # Determine status and confidence
+        status, confidence, recommendations = self._determine_status_and_recommendations(
+            predicted_days_remaining, current_temp, current_humidity, ethylene_level, base_info
+        )
+
+        return {
+            'type': 'shelf_life',
+            'predicted_value': f"{predicted_days_remaining} days",
+            'predicted_days_remaining': predicted_days_remaining,
+            'predicted_expiry_date': predicted_expiry_date.isoformat(),
+            'status': status,
+            'confidence': confidence,
+            'input_conditions': {
+                'fruit_type': fruit_type,
+                'age_in_days': age_in_days,
+                'temperature': current_temp,
+                'humidity': current_humidity,
+                'ethylene_level': ethylene_level,
+                'co2_level': co2_level,
+            },
+            'recommendations': recommendations
+        }
+
+    def _determine_status_and_recommendations(self, days_remaining: int, temp: float, hum: float, ethylene: float, base_info: Dict[str, Any]) -> Tuple[str, float, List[str]]:
+        """Determines the status and generates recommendations for shelf life."""
+        recommendations = []
+        status = 'Optimal'
+        confidence = 0.9 # Base confidence
+
+        if days_remaining <= 2:
+            status = 'Critical'
+            confidence *= 0.7
+            recommendations.append("URGENT: Product shelf life is critical. Prioritize for immediate sale or processing.")
+            recommendations.append("Verify actual product quality for potential disposal.")
+        elif days_remaining <= 5:
+            status = 'Warning'
+            confidence *= 0.8
+            recommendations.append("WARNING: Product nearing end of shelf life. Plan for quick turnover or discount.")
+        else:
+            recommendations.append("Product has good remaining shelf life.")
+
+        # Environmental condition recommendations (enhance beyond simple alerts)
+        if temp < (base_info['optimal_temp'] - 2):
+            recommendations.append(f"Temperature is below optimal ({base_info['optimal_temp']}°C). Adjust to avoid chilling injury.")
+            confidence *= 0.9
+        elif temp > (base_info['optimal_temp'] + 2):
+            recommendations.append(f"Temperature is above optimal ({base_info['optimal_temp']}°C). Reduce to slow ripening/decay.")
+            confidence *= 0.9
+
+        if hum < (base_info['optimal_humidity'] - 5):
+            recommendations.append(f"Humidity is low ({base_info['optimal_humidity']}% optimal). Increase to prevent dehydration.")
+            confidence *= 0.9
+        elif hum > (base_info['optimal_humidity'] + 5):
+            recommendations.append(f"Humidity is high ({base_info['optimal_humidity']}% optimal). Reduce to prevent mold/bacterial growth.")
+            confidence *= 0.9
+
+        if base_info['climacteric'] and base_info['ethylene_sensitive'] and ethylene > 0.5:
+            recommendations.append("Ethylene levels are elevated. Isolate from ethylene-producing fruits or use ethylene scrubbers.")
+            confidence *= 0.8
+
+        return status, min(1.0, confidence), list(set(recommendations)) # Remove duplicates
+
 class BikaAIService:
     """Main AI service orchestrating all prediction models"""
     
@@ -1259,8 +1542,7 @@ class BikaAIService:
         self.disease_predictor = FruitDiseasePredictor()
         self.price_predictor = FruitPricePredictor()
         
-        # Load pre-trained models if available
-        self.load_pre_trained_models()
+        # We no longer call load_pre_trained_models here as EnhancedBikaAIService handles comprehensive loading.
     
     def load_pre_trained_models(self):
         """Load pre-trained models from disk"""
@@ -1616,6 +1898,7 @@ __all__ = [
     'EthyleneMonitor',
     'FruitDiseasePredictor',
     'FruitPricePredictor',
+    'ShelfLifePredictor', # Added
     'BikaAIService',
     'bika_ai_service'
 ]

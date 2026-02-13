@@ -1,0 +1,256 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block extra_head %}
+    <title>Manager Reports</title>
+    <!-- Chart.js CSS (if needed, usually JS handles styling) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <style>
+        .report-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            padding: 20px;
+            margin-bottom: 20px;
+            height: 100%; /* Ensure cards are same height */
+        }
+        .report-card h5 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .report-card .value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .report-card .label {
+            color: #6c757d;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .date-filter-form {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-5">
+    <div class="row">
+        {% include 'bika/partials/user_sidebar.html' %} {# Assuming this sidebar exists and has manager links #}
+
+        <div class="col-md-9">
+            <h2 class="mb-4">Manager Reports & Analytics</h2>
+
+            {# Date Filter Form #}
+            <div class="date-filter-form">
+                <form method="get" class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="start_date" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="end_date" class="form-label">End Date</label>
+                        <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date }}">
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">Apply Filter</button>
+                    </div>
+                </form>
+            </div>
+
+            {# Summary Statistics #}
+            <div class="row">
+                {# Inventory Stats #}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Inventory Overview</h5>
+                        <p class="mb-1"><span class="value">{{ inventory_stats.total_items_added }}</span> <span class="label">Items Added</span></p>
+                        <p class="mb-1"><span class="value">${{ inventory_stats.total_value_added|floatformat:2 }}</span> <span class="label">Value Added</span></p>
+                        <p class="mb-1"><span class="value">{{ inventory_stats.current_low_stock }}</span> <span class="label">Low Stock Items</span></p>
+                        <p class="mb-1"><span class="value">{{ inventory_stats.current_expiring_soon }}</span> <span class="label">Expiring Soon</span></p>
+                    </div>
+                </div>
+
+                {# Sales Stats #}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Sales Overview</h5>
+                        <p class="mb-1"><span class="value">{{ sales_stats.total_orders }}</span> <span class="label">Total Orders</span></p>
+                        <p class="mb-1"><span class="value">${{ sales_stats.total_revenue|floatformat:2 }}</span> <span class="label">Total Revenue</span></p>
+                        <p class="mb-1"><span class="value">${{ sales_stats.avg_order_value|floatformat:2 }}</span> <span class="label">Avg. Order Value</span></p>
+                        <p class="mb-1"><span class="value">{{ sales_stats.successful_orders }}</span> <span class="label">Successful Orders</span></p>
+                    </div>
+                </div>
+
+                {# Delivery Stats #}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Delivery Performance</h5>
+                        <p class="mb-1"><span class="value">{{ delivery_stats.total_deliveries }}</span> <span class="label">Total Deliveries</span></p>
+                        <p class="mb-1"><span class="value">{{ delivery_stats.on_time_deliveries }}</span> <span class="label">On-Time</span></p>
+                        <p class="mb-1"><span class="value">{{ delivery_stats.late_deliveries }}</span> <span class="label">Late</span></p>
+                        <p class="mb-1"><span class="value">{{ delivery_stats.avg_delivery_time_hours }} hrs</span> <span class="label">Avg. Delivery Time</span></p>
+                    </div>
+                </div>
+            </div>
+
+            {# Charts Section #}
+            <div class="row">
+                <div class="col-lg-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Sales Revenue Trend</h5>
+                        <div class="chart-container">
+                            <canvas id="salesRevenueChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Inventory Added Trend</h5>
+                        <div class="chart-container">
+                            <canvas id="inventoryTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Delivery Status Distribution</h5>
+                        <div class="chart-container">
+                            <canvas id="deliveryStatusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Top Clients (Total Spent)</h5>
+                        <ul class="list-group list-group-flush">
+                            {% for client in client_stats.top_clients_by_value %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    {{ client.user__username }}
+                                    <span class="badge bg-primary rounded-pill">${{ client.total_spent|floatformat:2 }}</span>
+                                </li>
+                            {% empty %}
+                                <li class="list-group-item text-center">No client data available.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            {# Client Stats (Non-Chart) #}
+            <div class="row">
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Client Acquisition</h5>
+                        <p class="mb-1"><span class="value">{{ client_stats.new_clients }}</span> <span class="label">New Clients (in period)</span></p>
+                        <p class="mb-1"><span class="value">{{ client_stats.active_clients_in_period }}</span> <span class="label">Active Clients (in period)</span></p>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="report-card">
+                        <h5 class="card-title">Total Clients</h5>
+                        <p class="mb-1"><span class="value">{{ client_stats.total_clients }}</span> <span class="label">Overall Registered Clients</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Sales Revenue Chart ---
+        const salesRevenueData = JSON.parse('{{ sales_trend_data|escapejs }}');
+        const salesLabels = salesRevenueData.map(item => item.date);
+        const salesData = salesRevenueData.map(item => item.revenue);
+        const salesRevenueCtx = document.getElementById('salesRevenueChart').getContext('2d');
+        new Chart(salesRevenueCtx, {
+            type: 'line',
+            data: {
+                labels: salesLabels,
+                datasets: [{
+                    label: 'Daily Revenue',
+                    data: salesData,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // --- Inventory Trend Chart ---
+        const inventoryTrendData = JSON.parse('{{ inventory_trend_data|escapejs }}');
+        const inventoryLabels = inventoryTrendData.map(item => item.date);
+        const inventoryData = inventoryTrendData.map(item => item.added);
+        const inventoryTrendCtx = document.getElementById('inventoryTrendChart').getContext('2d');
+        new Chart(inventoryTrendCtx, {
+            type: 'bar',
+            data: {
+                labels: inventoryLabels,
+                datasets: [{
+                    label: 'Items Added Daily',
+                    data: inventoryData,
+                    backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // --- Delivery Status Chart ---
+        const deliveryStatusChartData = JSON.parse('{{ delivery_status_chart_data|escapejs }}');
+        const deliveryStatusCtx = document.getElementById('deliveryStatusChart').getContext('2d');
+        new Chart(deliveryStatusCtx, {
+            type: 'pie',
+            data: {
+                labels: deliveryStatusChartData.labels,
+                datasets: [{
+                    label: 'Delivery Status',
+                    data: deliveryStatusChartData.data,
+                    backgroundColor: [
+                        'rgba(255, 206, 86, 0.8)', // Pending
+                        'rgba(54, 162, 235, 0.8)', // Processing
+                        'rgba(75, 192, 192, 0.8)', // In Transit
+                        'rgba(153, 102, 255, 0.8)', // Delivered
+                        'rgba(255, 99, 132, 0.8)', // Cancelled
+                        'rgba(201, 203, 207, 0.8)'  // Failed
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+            }
+        });
+    });
+</script>
+{% endblock %}

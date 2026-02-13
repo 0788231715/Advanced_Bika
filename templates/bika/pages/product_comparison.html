@@ -1,0 +1,199 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Product Comparison - Bika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .comparison-table-wrapper {
+        overflow-x: auto;
+    }
+    .comparison-table {
+        min-width: 800px; /* Ensure table is wide enough for comparison */
+    }
+    .comparison-table th, .comparison-table td {
+        vertical-align: middle;
+        text-align: center;
+        padding: 15px;
+        border: 1px solid #e9ecef;
+    }
+    .comparison-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #343a40;
+    }
+    .comparison-table .product-header {
+        background-color: #e9ecef;
+        padding: 10px;
+        font-size: 1.1rem;
+    }
+    .product-image-thumb {
+        width: 100px;
+        height: 100px;
+        object-fit: contain;
+        margin-bottom: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    .feature-row.even {
+        background-color: #fcfcfc;
+    }
+    .feature-row.odd {
+        background-color: #ffffff;
+    }
+    .no-products-message {
+        padding: 50px;
+        text-align: center;
+        color: #6c757d;
+    }
+    .highlight-feature {
+        background-color: #e6f7ff; /* Light blue background for key features */
+    }
+    .price-value {
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .old-price {
+        text-decoration: line-through;
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <h2 class="mb-4 text-center">Product Comparison</h2>
+
+    {% if products_to_compare %}
+    <div class="comparison-table-wrapper">
+        <table class="table table-bordered comparison-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    {% for product in products_to_compare %}
+                    <th class="product-header">
+                        <img src="{% if product.images.first %}{{ product.images.first.image.url }}{% else %}{% static 'images/placeholder-product.jpg' %}{% endif %}" 
+                             alt="{{ product.name }}" class="img-fluid product-image-thumb">
+                        <br>
+                        <a href="{{ product.get_absolute_url }}" class="text-decoration-none text-dark d-block mt-2">{{ product.name }}</a>
+                        <small class="text-muted">{{ product.category.name }}</small>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Price -->
+                <tr class="feature-row odd highlight-feature">
+                    <td>Price</td>
+                    {% for product in products_to_compare %}
+                    <td>
+                        <span class="price-value">${{ product.price|floatformat:2 }}</span><br>
+                        {% if product.compare_price %}
+                            <span class="old-price">${{ product.compare_price|floatformat:2 }}</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                <!-- Short Description -->
+                <tr class="feature-row even">
+                    <td>Short Description</td>
+                    {% for product in products_to_compare %}
+                    <td class="text-muted small text-start">{{ product.short_description|default:"N/A" }}</td>
+                    {% endfor %}
+                </tr>
+                <!-- Category -->
+                <tr class="feature-row odd">
+                    <td>Category</td>
+                    {% for product in products_to_compare %}
+                    <td>{{ product.category.name }}</td>
+                    {% endfor %}
+                </tr>
+                <!-- Brand -->
+                <tr class="feature-row even">
+                    <td>Brand</td>
+                    {% for product in products_to_compare %}
+                    <td>{{ product.brand|default:"N/A" }}</td>
+                    {% endfor %}
+                </tr>
+                <!-- Stock Quantity -->
+                <tr class="feature-row odd highlight-feature">
+                    <td>Stock Quantity</td>
+                    {% for product in products_to_compare %}
+                    <td>
+                        {% if product.is_in_stock %}
+                            {% if product.is_low_stock %}
+                                <span class="badge bg-warning">Low Stock ({{ product.stock_quantity }})</span>
+                            {% else %}
+                                <span class="badge bg-success">In Stock ({{ product.stock_quantity }})</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-danger">Out of Stock</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                <!-- Weight -->
+                <tr class="feature-row even">
+                    <td>Weight</td>
+                    {% for product in products_to_compare %}
+                    <td>{% if product.weight %}{{ product.weight }} kg{% else %}N/A{% endif %}</td>
+                    {% endfor %}
+                </tr>
+                <!-- Dimensions -->
+                <tr class="feature-row odd">
+                    <td>Dimensions</td>
+                    {% for product in products_to_compare %}
+                    <td>{{ product.dimensions|default:"N/A" }}</td>
+                    {% endfor %}
+                </tr>
+                <!-- Ratings (Example, requires review system) -->
+                <tr class="feature-row even">
+                    <td>Average Rating</td>
+                    {% for product in products_to_compare %}
+                    <td>
+                        {% if product.average_rating %}
+                            {{ product.average_rating|floatformat:1 }} <i class="fas fa-star text-warning"></i>
+                        {% else %}
+                            No ratings yet
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                <!-- Actions -->
+                <tr class="feature-row odd">
+                    <td>Actions</td>
+                    {% for product in products_to_compare %}
+                    <td>
+                        <a href="{{ product.get_absolute_url }}" class="btn btn-sm btn-outline-primary mb-2">View Details</a><br>
+                        <button class="btn btn-sm btn-primary add-to-cart-btn" data-product-id="{{ product.id }}">Add to Cart</button>
+                    </td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card shadow-sm">
+        <div class="card-body no-products-message">
+            <i class="fas fa-info-circle fa-3x mb-3 text-muted"></i>
+            <h3>No Products Selected for Comparison</h3>
+            <p>Please select at least two products to compare them side-by-side. You can select products from the <a href="{% url 'bika:product_list' %}">product listing page</a>.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // Example for Add to Cart button in comparison table (simplified)
+    document.querySelectorAll('.add-to-cart-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const productId = this.getAttribute('data-product-id');
+            // In a real application, make an AJAX call to add the product to cart
+            alert(`Product ${productId} added to cart!`);
+            // Optionally, update cart icon in header
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,271 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Manage Deliveries - Bika Manager{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for manager navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-truck me-2"></i>Manage Deliveries</h2>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#assignDeliveryModal">
+                    <i class="fas fa-plus me-2"></i>Assign New Delivery
+                </button>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">All Deliveries</h5>
+                    <div class="input-group w-50">
+                        <input type="text" class="form-control form-control-sm" placeholder="Search by delivery #, order #, driver..." aria-label="Search deliveries">
+                        <button class="btn btn-outline-secondary btn-sm" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <select class="form-select form-select-sm ms-2" aria-label="Filter by status">
+                            <option selected>Filter by Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in_transit">In Transit</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if deliveries %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Delivery #</th>
+                                    <th>Order #</th>
+                                    <th>Client</th>
+                                    <th>Driver</th>
+                                    <th>Status</th>
+                                    <th>Est. Delivery</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for delivery in deliveries %}
+                                <tr>
+                                    <td><strong>{{ delivery.delivery_number }}</strong></td>
+                                    <td>
+                                        <a href="{% url 'bika:order_detail' delivery.order.id %}" class="text-decoration-none">
+                                            {{ delivery.order.order_number }}
+                                        </a>
+                                    </td>
+                                    <td>{{ delivery.order.user.username }}</td>
+                                    <td>
+                                        {% if delivery.driver %}{{ delivery.driver.username }}{% else %}Unassigned{% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if delivery.status == 'delivered' %}success{% elif delivery.status == 'in_transit' %}info{% elif delivery.status == 'pending' %}warning{% else %}danger{% endif %}">
+                                            {{ delivery.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ delivery.estimated_delivery|date:"M d, Y" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'bika:manager_delivery_detail' delivery.id %}" class="btn btn-outline-primary">
+                                                <i class="fas fa-eye me-1"></i>View
+                                            </a>
+                                            <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#editDeliveryModal" data-delivery-id="{{ delivery.id }}">
+                                                <i class="fas fa-edit me-1"></i>Edit
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-truck-loading fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No deliveries to manage at this time.</p>
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#assignDeliveryModal">
+                            <i class="fas fa-plus me-2"></i>Assign First Delivery
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Delivery Statistics -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Delivery Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 mb-3">
+                            <h4 class="text-primary">{{ total_deliveries }}</h4>
+                            <p class="text-muted small">Total Deliveries</p>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <h4 class="text-success">{{ delivered_count }}</h4>
+                            <p class="text-muted small">Delivered</p>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <h4 class="text-warning">{{ in_transit_count }}</h4>
+                            <p class="text-muted small">In Transit</p>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <h4 class="text-danger">{{ pending_count }}</h4>
+                            <p class="text-muted small">Pending</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals for Assign/Edit Delivery (place outside content block) -->
+<div class="modal fade" id="assignDeliveryModal" tabindex="-1" aria-labelledby="assignDeliveryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="assignDeliveryModalLabel">Assign New Delivery</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="assignDeliveryForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="orderSelect" class="form-label">Select Order</label>
+                        <select class="form-select" id="orderSelect" required>
+                            <option value="">Choose an order...</option>
+                            {% for order in unassigned_orders %}
+                            <option value="{{ order.id }}">Order #{{ order.order_number }} (Client: {{ order.user.username }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="driverSelect" class="form-label">Assign Driver</label>
+                        <select class="form-select" id="driverSelect" required>
+                            <option value="">Choose a driver...</option>
+                            {% for driver in available_drivers %}
+                            <option value="{{ driver.id }}">{{ driver.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="estimatedDeliveryDate" class="form-label">Estimated Delivery Date</label>
+                        <input type="date" class="form-control" id="estimatedDeliveryDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="specialInstructions" class="form-label">Special Instructions (optional)</label>
+                        <textarea class="form-control" id="specialInstructions" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Assign Delivery</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editDeliveryModal" tabindex="-1" aria-labelledby="editDeliveryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="editDeliveryModalLabel">Edit Delivery</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editDeliveryForm">
+                    {% csrf_token %}
+                    <input type="hidden" id="editDeliveryId">
+                    <div class="mb-3">
+                        <label for="editDriverSelect" class="form-label">Driver</label>
+                        <select class="form-select" id="editDriverSelect" required>
+                            <option value="">Choose a driver...</option>
+                            {% for driver in available_drivers %}
+                            <option value="{{ driver.id }}">{{ driver.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editStatusSelect" class="form-label">Status</label>
+                        <select class="form-select" id="editStatusSelect" required>
+                            {% for status_val, status_display in delivery_statuses %}
+                            <option value="{{ status_val }}">{{ status_display }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editEstimatedDeliveryDate" class="form-label">Estimated Delivery Date</label>
+                        <input type="date" class="form-control" id="editEstimatedDeliveryDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSpecialInstructions" class="form-label">Special Instructions (optional)</label>
+                        <textarea class="form-control" id="editSpecialInstructions" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-info w-100">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Assign Delivery Modal Logic ---
+        document.getElementById('assignDeliveryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const orderId = document.getElementById('orderSelect').value;
+            const driverId = document.getElementById('driverSelect').value;
+            const estDate = document.getElementById('estimatedDeliveryDate').value;
+            const instructions = document.getElementById('specialInstructions').value;
+
+            console.log('Assigning delivery:', { orderId, driverId, estDate, instructions });
+            // Here you would make an AJAX call to your backend to assign the delivery
+            alert('Delivery assigned successfully (simulated)!');
+            var bsModal = bootstrap.Modal.getInstance(document.getElementById('assignDeliveryModal'));
+            bsModal.hide();
+            location.reload(); // Reload page to reflect changes
+        });
+
+        // --- Edit Delivery Modal Logic ---
+        var editDeliveryModal = document.getElementById('editDeliveryModal');
+        editDeliveryModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget; 
+            var deliveryId = button.getAttribute('data-delivery-id');
+            document.getElementById('editDeliveryId').value = deliveryId;
+
+            // In a real app, fetch existing delivery data via AJAX
+            // For now, populate with dummy data or from row attributes
+            const row = button.closest('tr');
+            if (row) {
+                // Example: populate fields from current row or API
+                document.getElementById('editDriverSelect').value = '{{ delivery.driver.id|default:"" }}'; // Needs to be dynamic
+                document.getElementById('editStatusSelect').value = '{{ delivery.status|default:"" }}'; // Needs to be dynamic
+                document.getElementById('editEstimatedDeliveryDate').value = '{{ delivery.estimated_delivery|date:"Y-m-d"|default:"" }}';
+                document.getElementById('editSpecialInstructions').value = '{{ delivery.special_instructions|default:"" }}';
+            }
+        });
+
+        document.getElementById('editDeliveryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const deliveryId = document.getElementById('editDeliveryId').value;
+            const driverId = document.getElementById('editDriverSelect').value;
+            const status = document.getElementById('editStatusSelect').value;
+            const estDate = document.getElementById('editEstimatedDeliveryDate').value;
+            const instructions = document.getElementById('editSpecialInstructions').value;
+
+            console.log('Updating delivery:', { deliveryId, driverId, status, estDate, instructions });
+            // Here you would make an AJAX call to your backend to update the delivery
+            alert('Delivery updated successfully (simulated)!');
+            var bsModal = bootstrap.Modal.getInstance(document.getElementById('editDeliveryModal'));
+            bsModal.hide();
+            location.reload(); // Reload page to reflect changes
+        });
+    });
+</script>

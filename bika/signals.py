@@ -8,7 +8,7 @@ from django.db import transaction
 from .models import (
     CustomUser, Product, ProductAlert, FruitBatch, 
     FruitQualityReading, Order, OrderItem, Cart,
-    ProductReview, Wishlist, RealTimeSensorData
+    ProductReview, Wishlist, RealTimeSensorData, InventoryItem, Notification
 )
 from .services.ai_service import enhanced_ai_service
 from bika import models
@@ -96,6 +96,64 @@ def handle_product_post_save(sender, instance, created, **kwargs):
                 detected_by='system',
                 is_resolved=False
             )
+
+# ==================== INVENTORY SIGNALS ====================
+
+@receiver(post_save, sender=InventoryItem)
+def handle_inventory_item_save(sender, instance, **kwargs):
+    """
+    Check for inventory conditions like low stock or near expiry
+    and create notifications for the client.
+    """
+    if not instance.client:
+        return
+
+    # Check for low stock
+    if instance.is_low_stock:
+        # To avoid spam, check if a similar notification was sent recently
+        one_day_ago = timezone.now() - timezone.timedelta(days=1)
+        existing_notification = Notification.objects.filter(
+            user=instance.client,
+            related_object_type='inventoryitem',
+            related_object_id=instance.id,
+            title__icontains='Low Stock Alert',
+            created_at__gte=one_day_ago,
+            is_read=False
+        ).exists()
+
+        if not existing_notification:
+            Notification.objects.create(
+                user=instance.client,
+                title=f'Low Stock Alert: {instance.name}',
+                message=f'Your item "{instance.name}" (SKU: {instance.sku}) is low on stock. Current quantity: {instance.quantity}.',
+                notification_type='product_alert',
+                related_object_type='inventoryitem',
+                related_object_id=instance.id
+            )
+
+    # Check for near expiry
+    if instance.is_near_expiry:
+        one_day_ago = timezone.now() - timezone.timedelta(days=1)
+        existing_notification = Notification.objects.filter(
+            user=instance.client,
+            related_object_type='inventoryitem',
+            related_object_id=instance.id,
+            title__icontains='Expiry Alert',
+            created_at__gte=one_day_ago,
+            is_read=False
+        ).exists()
+
+        if not existing_notification:
+            days = instance.days_until_expiry
+            Notification.objects.create(
+                user=instance.client,
+                title=f'Expiry Alert: {instance.name}',
+                message=f'Your item "{instance.name}" (SKU: {instance.sku}) is expiring in {days} days.',
+                notification_type='product_alert',
+                related_object_type='inventoryitem',
+                related_object_id=instance.id
+            )
+
 
 # ==================== FRUIT BATCH SIGNALS ====================
 
@@ -337,6 +395,9 @@ def connect_signals():
     # Product signals
     pre_save.connect(handle_product_save, sender=Product)
     post_save.connect(handle_product_post_save, sender=Product)
+
+    # Inventory signals
+    post_save.connect(handle_inventory_item_save, sender=InventoryItem)
     
     # Fruit monitoring signals
     pre_save.connect(handle_fruit_batch_expiry, sender=FruitBatch)

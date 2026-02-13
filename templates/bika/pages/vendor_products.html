@@ -1,11 +1,190 @@
 {% extends 'bika/base.html' %}
 {% load static %}
 
-{% block title %}My Products - Bika{% endblock %}
+{% block title %}My Products - Bika Vendor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .vendor-products-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 40px 0;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+    .product-list-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 5px 25px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+    }
+    .product-list-table th, .product-list-table td {
+        vertical-align: middle;
+    }
+    .product-list-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+    }
+    .product-image-thumb {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 5px;
+        border: 1px solid #eee;
+    }
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 0.85em;
+    }
+    .action-button {
+        padding: 5px 10px;
+        font-size: 0.85em;
+        margin-right: 5px;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 50px;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <h2>My Products</h2>
-    <!-- Add product listing content here -->
+<div class="container py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/vendor_sidebar.html' %} {# Assuming a sidebar for vendor navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="vendor-products-header text-center">
+                <h2 class="mb-2"><i class="fas fa-box-open me-2"></i>My Products</h2>
+                <p class="lead">Manage your product listings, inventory, and status</p>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="mb-0">Product Listings</h4>
+                <a href="{% url 'bika:vendor_add_product' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Add New Product
+                </a>
+            </div>
+
+            <div class="product-list-card">
+                <div class="card-body">
+                    {% if products %}
+                    <div class="table-responsive">
+                        <table class="table product-list-table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Image</th>
+                                    <th>Product Name</th>
+                                    <th>Category</th>
+                                    <th>Price</th>
+                                    <th>Stock</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in products %}
+                                <tr>
+                                    <td>
+                                        <img src="{% if product.images.first %}{{ product.images.first.image.url }}{% else %}{% static 'images/placeholder-product.jpg' %}{% endif %}" 
+                                             alt="{{ product.name }}" class="product-image-thumb">
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'bika:product_detail' product.slug %}" class="text-decoration-none text-dark fw-bold">
+                                            {{ product.name }}
+                                        </a>
+                                        <div class="text-muted small">SKU: {{ product.sku }}</div>
+                                    </td>
+                                    <td>{{ product.category.name }}</td>
+                                    <td>${{ product.price|floatformat:2 }}</td>
+                                    <td>
+                                        {% if product.is_in_stock %}
+                                            {% if product.is_low_stock %}
+                                                <span class="badge bg-warning status-badge">Low ({{ product.stock_quantity }})</span>
+                                            {% else %}
+                                                <span class="badge bg-success status-badge">{{ product.stock_quantity }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-danger status-badge">Out of Stock</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if product.status == 'active' %}success{% elif product.status == 'draft' %}info{% else %}secondary{% endif %} status-badge">
+                                            {{ product.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'bika:vendor_edit_product' product.id %}" class="btn btn-sm btn-outline-primary action-button" title="Edit Product">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-outline-danger action-button" title="Delete Product" 
+                                                onclick="confirmDeleteProduct('{{ product.id }}', '{{ product.name }}')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-box-open fa-4x text-muted mb-3"></i>
+                        <h3>No Products Found</h3>
+                        <p class="text-muted">You haven't added any products yet. Click the button below to add your first product!</p>
+                        <a href="{% url 'bika:vendor_add_product' %}" class="btn btn-primary btn-lg mt-3">
+                            <i class="fas fa-plus me-2"></i>Add Your First Product
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<!-- Delete Confirmation Modal (Re-using from vendor_products.html if it existed) -->
+<div class="modal fade" id="deleteProductModal" tabindex="-1" aria-labelledby="deleteProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteProductModalLabel">Confirm Product Deletion</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete product: <strong id="modalProductName"></strong>?</p>
+                <p class="text-danger small">This action cannot be undone. All product data, images, and related information will be permanently deleted.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteProductForm" method="post" action="{% url 'bika:vendor_delete_product' 0 %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="product_id" id="deleteProductId">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Delete Product
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmDeleteProduct(productId, productName) {
+        document.getElementById('modalProductName').textContent = productName;
+        document.getElementById('deleteProductId').value = productId;
+        
+        // Update the form action URL
+        const deleteForm = document.getElementById('deleteProductForm');
+        deleteForm.action = deleteForm.action.replace('0', productId);
+
+        var deleteModal = new bootstrap.Modal(document.getElementById('deleteProductModal'));
+        deleteModal.show();
+    }
+</script>
 {% endblock %}

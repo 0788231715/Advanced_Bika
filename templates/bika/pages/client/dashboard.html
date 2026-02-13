@@ -1,0 +1,186 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Client Dashboard - Bika{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for client navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Client Dashboard</h2>
+                <a href="{% url 'bika:create_client_request' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>New Request
+                </a>
+            </div>
+
+            <!-- Overview Cards -->
+            <div class="row mb-4">
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-primary h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                        Total Orders</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_orders }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-shopping-bag fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-success h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                        Active Requests</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ active_requests }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-tasks fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-warning h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                        Items in Inventory</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ items_in_inventory }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-boxes fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity (Orders/Requests) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Recent Activity</h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'bika:user_orders' %}" class="btn btn-outline-primary">Orders</a>
+                        <a href="{% url 'bika:client_requests' %}" class="btn btn-outline-primary">Requests</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if recent_activity %}
+                    <ul class="list-group list-group-flush">
+                        {% for activity in recent_activity %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                {% if activity.order_number %}
+                                    <i class="fas fa-receipt me-2 text-primary"></i>
+                                    Order #{{ activity.order_number }}
+                                {% else %}
+                                    <i class="fas fa-clipboard-list me-2 text-success"></i>
+                                    Request #{{ activity.id }} ({{ activity.request_type }})
+                                {% endif %}
+                                <small class="text-muted ms-3">{{ activity.created_at|date:"M d, H:i" }}</small>
+                            </div>
+                            <div>
+                                {% if activity.status %}
+                                <span class="badge bg-{% if activity.status == 'delivered' or activity.status == 'completed' %}success{% elif activity.status == 'pending' or activity.status == 'open' %}warning{% else %}info{% endif %}">
+                                    {{ activity.get_status_display }}
+                                </span>
+                                {% endif %}
+                                {% if activity.order_number %}
+                                <a href="{% url 'bika:order_detail' activity.id %}" class="btn btn-sm btn-outline-info ms-2">View</a>
+                                {% else %}
+                                <a href="{% url 'bika:client_request_detail' activity.id %}" class="btn btn-sm btn-outline-info ms-2">View</a>
+                                {% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No recent activity to display.</p>
+                        <a href="{% url 'bika:product_list' %}" class="btn btn-primary">Start Shopping</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Quick Links</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item"><a href="{% url 'bika:user_profile' %}" class="text-decoration-none"><i class="fas fa-user me-2"></i>My Profile</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:user_orders' %}" class="text-decoration-none"><i class="fas fa-receipt me-2"></i>My Orders</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:client_requests' %}" class="text-decoration-none"><i class="fas fa-clipboard-list me-2"></i>My Requests</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item"><a href="{% url 'bika:client_inventory' %}" class="text-decoration-none"><i class="fas fa-boxes me-2"></i>My Inventory</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:client_deliveries' %}" class="text-decoration-none"><i class="fas fa-truck me-2"></i>My Deliveries</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:user_settings' %}" class="text-decoration-none"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .border-left-primary {
+        border-left: 0.25rem solid #007bff !important;
+    }
+    .border-left-success {
+        border-left: 0.25rem solid #28a745 !important;
+    }
+    .border-left-warning {
+        border-left: 0.25rem solid #ffc107 !important;
+    }
+    .text-xs {
+        font-size: 0.7rem;
+    }
+    .font-weight-bold {
+        font-weight: 700;
+    }
+    .text-gray-800 {
+        color: #5a5c69 !important;
+    }
+    .card-body {
+        flex: 1 1 auto;
+        padding: 1.25rem;
+    }
+    .no-gutters {
+        margin-right: 0;
+        margin-left: 0;
+    }
+    .card.shadow-sm {
+        border: none;
+        border-radius: 0.5rem;
+    }
+</style>
+{% endblock %}

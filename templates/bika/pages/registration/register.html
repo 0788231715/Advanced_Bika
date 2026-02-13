@@ -1,7 +1,6 @@
 {% extends 'bika/base.html' %}
 {% load static %}
 
-
 {% block title %}Register - Bika{% endblock %}
 
 {% block extra_css %}
@@ -10,54 +9,56 @@
     min-height: 100vh;
     display: flex;
     align-items: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
     padding: 100px 0 50px;
 }
 
 .register-card {
     background: white;
     border-radius: 15px;
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
     overflow: hidden;
-    max-width: 500px;
+    max-width: 800px;
     width: 100%;
 }
 
 .register-header {
     background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
     color: white;
-    padding: 30px;
+    padding: 40px;
     text-align: center;
 }
 
 .register-header h2 {
     margin: 0;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 2rem;
 }
 
 .register-header p {
-    margin: 10px 0 0;
+    margin: 15px 0 0;
     opacity: 0.9;
+    font-size: 1.1rem;
 }
 
 .register-body {
-    padding: 30px;
+    padding: 40px;
 }
 
 .register-logo {
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
     background: white;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 20px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    margin: 0 auto 25px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
 }
 
 .register-logo i {
-    font-size: 2rem;
+    font-size: 2.5rem;
     color: #28a745;
 }
 
@@ -67,21 +68,22 @@
 
 .form-control {
     border-radius: 10px;
-    padding: 12px 15px;
+    padding: 14px 18px;
     border: 2px solid #e9ecef;
     transition: all 0.3s ease;
+    font-size: 1rem;
 }
 
 .form-control:focus {
     border-color: #28a745;
-    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+    box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.25);
 }
 
 .btn-register {
     background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
     border: none;
     border-radius: 10px;
-    padding: 12px 30px;
+    padding: 15px 35px;
     font-weight: 600;
     font-size: 1.1rem;
     width: 100%;
@@ -90,8 +92,8 @@
 }
 
 .btn-register:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(40, 167, 69, 0.3);
     color: white;
 }
 
@@ -103,6 +105,7 @@
 .register-links a {
     color: #6c757d;
     text-decoration: none;
+    font-weight: 500;
     transition: color 0.3s ease;
 }
 
@@ -115,77 +118,210 @@
     border: none;
 }
 
-.password-requirements {
-    background: #f8f9fa;
-    border-radius: 10px;
-    padding: 15px;
-    margin-top: 10px;
-    font-size: 0.85rem;
+/* Role Selection */
+.role-selection {
+    margin-bottom: 2.5rem;
 }
 
-.password-requirements ul {
-    margin: 0;
-    padding-left: 20px;
-}
-
-.password-requirements li {
-    margin-bottom: 5px;
-    color: #6c757d;
-}
-
-.user-type-selection {
-    display: flex;
-    gap: 10px;
+.role-selection h4 {
+    text-align: center;
     margin-bottom: 1.5rem;
+    color: #333;
+    font-weight: 600;
 }
 
-.user-type-btn {
-    flex: 1;
-    padding: 15px;
+.role-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 2rem;
+}
+
+.role-card {
     border: 2px solid #e9ecef;
-    border-radius: 10px;
-    background: white;
+    border-radius: 15px;
+    padding: 25px 20px;
+    text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    text-align: center;
+    background: white;
 }
 
-.user-type-btn:hover {
+.role-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.role-card.active {
     border-color: #28a745;
-    transform: translateY(-2px);
+    background: linear-gradient(to bottom right, #f8fff9, #e8f6f3);
+    transform: translateY(-5px);
 }
 
-.user-type-btn.active {
-    border-color: #28a745;
-    background: #f8fff9;
+.role-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f8f9fa;
 }
 
-.user-type-btn i {
-    font-size: 1.5rem;
-    margin-bottom: 8px;
+.role-card.disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.role-card i {
+    font-size: 2.5rem;
+    margin-bottom: 15px;
     display: block;
 }
 
-.vendor-fields {
-    display: none;
+.role-card.customer i { color: #007bff; }
+.role-card.vendor i { color: #28a745; }
+.role-card.client i { color: #17a2b8; }
+.role-card.staff i { color: #6c757d; }
+
+.role-card h5 {
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.role-card p {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0;
+    line-height: 1.4;
+}
+
+/* Role-Specific Fields */
+.role-fields {
     background: #f8f9fa;
-    padding: 20px;
-    border-radius: 10px;
-    margin-bottom: 1.5rem;
+    border-radius: 15px;
+    padding: 25px;
+    margin: 2rem 0;
+    display: none;
+}
+
+.role-fields.active {
+    display: block;
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Steps Indicator */
+.registration-steps {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2.5rem;
+    position: relative;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 0 20px;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    background: #e9ecef;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 10px;
+    transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+    background: #28a745;
+    color: white;
+    transform: scale(1.1);
+}
+
+.step-line {
+    position: absolute;
+    top: 20px;
+    left: 50px;
+    right: 50px;
+    height: 2px;
+    background: #e9ecef;
+    z-index: 0;
+}
+
+.step-label {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+}
+
+.step.active .step-label {
+    color: #28a745;
+    font-weight: 600;
+}
+
+/* Password Strength */
+.password-strength {
+    margin-top: 10px;
+}
+
+.strength-meter {
+    height: 5px;
+    background: #e9ecef;
+    border-radius: 5px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.strength-meter-fill {
+    height: 100%;
+    width: 0%;
+    background: #dc3545;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.strength-meter-fill.weak { width: 25%; background: #dc3545; }
+.strength-meter-fill.fair { width: 50%; background: #ffc107; }
+.strength-meter-fill.good { width: 75%; background: #28a745; }
+.strength-meter-fill.strong { width: 100%; background: #20c997; }
+
+.strength-text {
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 5px;
 }
 
 /* Responsive */
-@media (max-width: 576px) {
+@media (max-width: 768px) {
     .register-section {
         padding: 80px 15px 30px;
     }
     
-    .register-card {
-        margin: 0 auto;
+    .register-body {
+        padding: 25px;
     }
     
-    .user-type-selection {
-        flex-direction: column;
+    .role-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .registration-steps {
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .step-line {
+        display: none;
     }
 }
 </style>
@@ -195,15 +331,15 @@
 <section class="register-section">
     <div class="container">
         <div class="row justify-content-center">
-            <div class="col-md-8 col-lg-6">
+            <div class="col-lg-10">
                 <div class="register-card">
                     <!-- Header -->
                     <div class="register-header">
                         <div class="register-logo">
                             <i class="fas fa-user-plus"></i>
                         </div>
-                        <h2>Join Bika</h2>
-                        <p>Create your account to get started</p>
+                        <h2>Join Bika Platform</h2>
+                        <p>Choose your account type and get started in minutes</p>
                     </div>
 
                     <!-- Body -->
@@ -219,39 +355,188 @@
                             {% endfor %}
                         {% endif %}
 
-                        <!-- User Type Selection -->
-                        <div class="user-type-selection">
-                            <div class="user-type-btn active" data-type="customer">
-                                <i class="fas fa-user"></i>
-                                <strong>Customer</strong>
-                                <small class="text-muted d-block">Shop products</small>
+                        <!-- Registration Steps -->
+                        <div class="registration-steps">
+                            <div class="step active" data-step="1">
+                                <div class="step-number">1</div>
+                                <span class="step-label">Select Role</span>
                             </div>
-                            <div class="user-type-btn" data-type="vendor">
-                                <i class="fas fa-store"></i>
-                                <strong>Vendor</strong>
-                                <small class="text-muted d-block">Sell products</small>
+                            <div class="step" data-step="2">
+                                <div class="step-number">2</div>
+                                <span class="step-label">Personal Info</span>
+                            </div>
+                            <div class="step" data-step="3">
+                                <div class="step-number">3</div>
+                                <span class="step-label">Account Setup</span>
+                            </div>
+                            <div class="step-line"></div>
+                        </div>
+
+                        <!-- Role Selection -->
+                        <div class="role-selection">
+                            <h4>What type of account do you need?</h4>
+                            <div class="role-cards">
+                                <!-- Customer Card -->
+                                <div class="role-card customer active" data-role="customer">
+                                    <i class="fas fa-shopping-cart"></i>
+                                    <h5>Customer</h5>
+                                    <p>Browse and purchase products from our marketplace</p>
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="fas fa-check me-1"></i>Shop products
+                                    </small>
+                                    <small class="text-muted">
+                                        <i class="fas fa-check me-1"></i>Track orders
+                                    </small>
+                                </div>
+
+                                <!-- Vendor Card -->
+                                <div class="role-card vendor" data-role="vendor">
+                                    <i class="fas fa-store"></i>
+                                    <h5>Vendor</h5>
+                                    <p>Sell your products on our platform and reach more customers</p>
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="fas fa-check me-1"></i>List products
+                                    </small>
+                                    <small class="text-muted">
+                                        <i class="fas fa-check me-1"></i>Manage sales
+                                    </small>
+                                </div>
+
+                                <!-- Client Card -->
+                                <div class="role-card client" data-role="client">
+                                    <i class="fas fa-building"></i>
+                                    <h5>Business Client</h5>
+                                    <p>Use our storage and delivery services for your business</p>
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="fas fa-check me-1"></i>Storage services
+                                    </small>
+                                    <small class="text-muted">
+                                        <i class="fas fa-check me-1"></i>Delivery tracking
+                                    </small>
+                                </div>
+
+                                <!-- Staff Card (Disabled) -->
+                                <div class="role-card staff disabled" title="Contact administrator for staff access">
+                                    <i class="fas fa-user-tie"></i>
+                                    <h5>Staff/Employee</h5>
+                                    <p>Administrators, Managers, Storage Staff, Drivers, Quality Controllers</p>
+                                    <div class="alert alert-warning mt-2 mb-0 p-2">
+                                        <small><i class="fas fa-lock me-1"></i>Admin registration required</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <!-- Registration Form -->
-                        <form method="post" id="registrationForm">
+                        <form method="post" id="registrationForm" novalidate>
                             {% csrf_token %}
                             
                             <!-- Hidden user type field -->
                             <input type="hidden" name="user_type" id="id_user_type" value="customer">
                             
+                            <!-- Role-Specific Fields -->
+                            <div class="role-fields" id="customerFields">
+                                <h5 class="mb-3"><i class="fas fa-shopping-cart me-2"></i>Customer Registration</h5>
+                                <p class="text-muted mb-4">Create an account to shop from our marketplace.</p>
+                            </div>
+
+                            <div class="role-fields" id="vendorFields">
+                                <h5 class="mb-3"><i class="fas fa-store me-2"></i>Vendor Registration</h5>
+                                <p class="text-muted mb-4">Provide your business information to start selling.</p>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="id_business_name" class="form-label">Business Name *</label>
+                                            <input type="text" 
+                                                   name="business_name" 
+                                                   id="id_business_name" 
+                                                   class="form-control" 
+                                                   placeholder="Your Business Name"
+                                                   required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="id_tax_id" class="form-label">Tax ID/VAT Number</label>
+                                            <input type="text" 
+                                                   name="tax_id" 
+                                                   id="id_tax_id" 
+                                                   class="form-control" 
+                                                   placeholder="Tax Identification Number">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="id_business_description" class="form-label">Business Description *</label>
+                                    <textarea name="business_description" 
+                                              id="id_business_description" 
+                                              class="form-control" 
+                                              placeholder="Describe your business, products, and services"
+                                              rows="3"
+                                              required></textarea>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="id_business_registration_number" class="form-label">Business Registration Number</label>
+                                    <input type="text" 
+                                           name="business_registration_number" 
+                                           id="id_business_registration_number" 
+                                           class="form-control" 
+                                           placeholder="Official registration number">
+                                </div>
+                            </div>
+
+                            <div class="role-fields" id="clientFields">
+                                <h5 class="mb-3"><i class="fas fa-building me-2"></i>Business Client Registration</h5>
+                                <p class="text-muted mb-4">Register for storage, delivery, and inventory management services.</p>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="id_company" class="form-label">Company Name *</label>
+                                            <input type="text" 
+                                                   name="company" 
+                                                   id="id_company" 
+                                                   class="form-control" 
+                                                   placeholder="Your Company Name"
+                                                   required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="id_industry" class="form-label">Industry</label>
+                                            <input type="text" 
+                                                   name="industry" 
+                                                   id="id_industry" 
+                                                   class="form-control" 
+                                                   placeholder="Agriculture, Retail, etc.">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="id_company_address" class="form-label">Company Address *</label>
+                                    <textarea name="company_address" 
+                                              id="id_company_address" 
+                                              class="form-control" 
+                                              placeholder="Full company address"
+                                              rows="2"
+                                              required></textarea>
+                                </div>
+                            </div>
+
                             <!-- Personal Information -->
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="form-group">
-                                        <label for="id_first_name" class="form-label">
-                                            <i class="fas fa-user me-2"></i>First Name
-                                        </label>
+                                        <label for="id_first_name" class="form-label">First Name *</label>
                                         <input type="text" 
                                                name="first_name" 
                                                id="id_first_name" 
                                                class="form-control" 
-                                               placeholder="First Name"
+                                               placeholder="John"
                                                required
                                                value="{{ form.first_name.value|default:'' }}">
                                         {% if form.first_name.errors %}
@@ -263,14 +548,12 @@
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-group">
-                                        <label for="id_last_name" class="form-label">
-                                            Last Name
-                                        </label>
+                                        <label for="id_last_name" class="form-label">Last Name *</label>
                                         <input type="text" 
                                                name="last_name" 
                                                id="id_last_name" 
                                                class="form-control" 
-                                               placeholder="Last Name"
+                                               placeholder="Doe"
                                                required
                                                value="{{ form.last_name.value|default:'' }}">
                                         {% if form.last_name.errors %}
@@ -282,133 +565,124 @@
                                 </div>
                             </div>
 
-                            <!-- Contact Information -->
-                            <div class="form-group">
-                                <label for="id_email" class="form-label">
-                                    <i class="fas fa-envelope me-2"></i>Email Address
-                                </label>
-                                <input type="email" 
-                                       name="email" 
-                                       id="id_email" 
-                                       class="form-control" 
-                                       placeholder="your.email@example.com"
-                                       required
-                                       value="{{ form.email.value|default:'' }}">
-                                {% if form.email.errors %}
-                                    <div class="text-danger small mt-1">
-                                        {{ form.email.errors }}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="id_email" class="form-label">Email Address *</label>
+                                        <input type="email" 
+                                               name="email" 
+                                               id="id_email" 
+                                               class="form-control" 
+                                               placeholder="john.doe@example.com"
+                                               required
+                                               value="{{ form.email.value|default:'' }}">
+                                        {% if form.email.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.email.errors }}
+                                            </div>
+                                        {% endif %}
                                     </div>
-                                {% endif %}
-                            </div>
-
-                            <div class="form-group">
-                                <label for="id_phone" class="form-label">
-                                    <i class="fas fa-phone me-2"></i>Phone Number
-                                </label>
-                                <input type="text" 
-                                       name="phone" 
-                                       id="id_phone" 
-                                       class="form-control" 
-                                       placeholder="+1 234 567 8900"
-                                       value="{{ form.phone.value|default:'' }}">
-                                {% if form.phone.errors %}
-                                    <div class="text-danger small mt-1">
-                                        {{ form.phone.errors }}
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            <!-- Vendor Fields (Hidden by default) -->
-                            <div class="vendor-fields" id="vendorFields">
-                                <h6 class="mb-3"><i class="fas fa-store me-2"></i>Business Information</h6>
-                                <div class="form-group">
-                                    <label for="id_business_name" class="form-label">Business Name</label>
-                                    <input type="text" 
-                                           name="business_name" 
-                                           id="id_business_name" 
-                                           class="form-control" 
-                                           placeholder="Your Business Name"
-                                           value="{{ form.business_name.value|default:'' }}">
                                 </div>
-                                <div class="form-group">
-                                    <label for="id_business_description" class="form-label">Business Description</label>
-                                    <textarea name="business_description" 
-                                              id="id_business_description" 
-                                              class="form-control" 
-                                              placeholder="Describe your business"
-                                              rows="3">{{ form.business_description.value|default:'' }}</textarea>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="id_phone" class="form-label">Phone Number *</label>
+                                        <input type="tel" 
+                                               name="phone" 
+                                               id="id_phone" 
+                                               class="form-control" 
+                                               placeholder="+255 712 345 678"
+                                               required
+                                               value="{{ form.phone.value|default:'' }}">
+                                        {% if form.phone.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.phone.errors }}
+                                            </div>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
 
                             <!-- Account Information -->
-                            <div class="form-group">
-                                <label for="id_username" class="form-label">
-                                    <i class="fas fa-user me-2"></i>Username
-                                </label>
-                                <input type="text" 
-                                       name="username" 
-                                       id="id_username" 
-                                       class="form-control" 
-                                       placeholder="Choose a username"
-                                       required
-                                       value="{{ form.username.value|default:'' }}">
-                                {% if form.username.errors %}
-                                    <div class="text-danger small mt-1">
-                                        {{ form.username.errors }}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="id_username" class="form-label">Username *</label>
+                                        <input type="text" 
+                                               name="username" 
+                                               id="id_username" 
+                                               class="form-control" 
+                                               placeholder="johndoe"
+                                               required
+                                               value="{{ form.username.value|default:'' }}">
+                                        {% if form.username.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.username.errors }}
+                                            </div>
+                                        {% endif %}
                                     </div>
-                                {% endif %}
-                            </div>
-
-                            <div class="form-group">
-                                <label for="id_password1" class="form-label">
-                                    <i class="fas fa-lock me-2"></i>Password
-                                </label>
-                                <input type="password" 
-                                       name="password1" 
-                                       id="id_password1" 
-                                       class="form-control" 
-                                       placeholder="Create a password"
-                                       required>
-                                {% if form.password1.errors %}
-                                    <div class="text-danger small mt-1">
-                                        {{ form.password1.errors }}
-                                    </div>
-                                {% endif %}
-                                
-                                <!-- Password Requirements -->
-                                <div class="password-requirements">
-                                    <small class="text-muted">Your password must contain:</small>
-                                    <ul>
-                                        <li>At least 8 characters</li>
-                                        <li>Cannot be too common</li>
-                                        <li>Cannot be entirely numeric</li>
-                                    </ul>
                                 </div>
                             </div>
 
-                            <div class="form-group">
-                                <label for="id_password2" class="form-label">
-                                    <i class="fas fa-lock me-2"></i>Confirm Password
-                                </label>
-                                <input type="password" 
-                                       name="password2" 
-                                       id="id_password2" 
-                                       class="form-control" 
-                                       placeholder="Confirm your password"
-                                       required>
-                                {% if form.password2.errors %}
-                                    <div class="text-danger small mt-1">
-                                        {{ form.password2.errors }}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="id_password1" class="form-label">Password *</label>
+                                        <input type="password" 
+                                               name="password1" 
+                                               id="id_password1" 
+                                               class="form-control" 
+                                               placeholder="Create a strong password"
+                                               required>
+                                        {% if form.password1.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.password1.errors }}
+                                            </div>
+                                        {% endif %}
+                                        
+                                        <!-- Password Strength Meter -->
+                                        <div class="password-strength">
+                                            <div class="strength-meter">
+                                                <div class="strength-meter-fill" id="passwordStrength"></div>
+                                            </div>
+                                            <div class="strength-text" id="passwordStrengthText">Password strength</div>
+                                        </div>
                                     </div>
-                                {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="id_password2" class="form-label">Confirm Password *</label>
+                                        <input type="password" 
+                                               name="password2" 
+                                               id="id_password2" 
+                                               class="form-control" 
+                                               placeholder="Confirm your password"
+                                               required>
+                                        {% if form.password2.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.password2.errors }}
+                                            </div>
+                                        {% endif %}
+                                        
+                                        <!-- Password Match Indicator -->
+                                        <div class="text-small mt-2" id="passwordMatchText"></div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- Terms Agreement -->
+                            <!-- Terms & Conditions -->
                             <div class="form-group">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="agree_terms" required>
                                     <label class="form-check-label" for="agree_terms">
-                                        I agree to the <a href="#" class="text-decoration-none">Terms of Service</a> and <a href="#" class="text-decoration-none">Privacy Policy</a>
+                                        I agree to the <a href="#" class="text-decoration-none">Terms of Service</a>, 
+                                        <a href="#" class="text-decoration-none">Privacy Policy</a>, and 
+                                        <a href="#" class="text-decoration-none">Cookie Policy</a>
+                                    </label>
+                                </div>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="marketing_emails">
+                                    <label class="form-check-label" for="marketing_emails">
+                                        I would like to receive marketing emails about Bika products and services
                                     </label>
                                 </div>
                             </div>
@@ -417,13 +691,26 @@
                             <button type="submit" class="btn btn-register mb-3">
                                 <i class="fas fa-user-plus me-2"></i>Create Account
                             </button>
+                            
+                            <!-- Verification Notice -->
+                            <div class="alert alert-info mt-3">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Account Verification Required:</strong>
+                                <small>After registration, you'll need to verify your email address and phone number. Additional verification may be required for Vendor and Client accounts.</small>
+                            </div>
                         </form>
 
-                        <!-- Login Link -->
+                        <!-- Already Have Account -->
                         <div class="register-links">
                             <p class="mb-0">
                                 Already have an account? 
                                 <a href="{% url 'bika:login' %}" class="ms-1">Sign in here</a>
+                            </p>
+                            <p class="mt-2">
+                                Need staff/employee access? 
+                                <a href="{% url 'bika:contact' %}" class="text-decoration-none">
+                                    <i class="fas fa-envelope me-1"></i>Contact administrator
+                                </a>
                             </p>
                         </div>
                     </div>
@@ -437,54 +724,78 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // User type selection
-    const userTypeBtns = document.querySelectorAll('.user-type-btn');
+    // DOM Elements
+    const roleCards = document.querySelectorAll('.role-card:not(.disabled)');
+    const roleFields = document.querySelectorAll('.role-fields');
     const userTypeField = document.getElementById('id_user_type');
-    const vendorFields = document.getElementById('vendorFields');
-    
-    userTypeBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            // Remove active class from all buttons
-            userTypeBtns.forEach(b => b.classList.remove('active'));
-            // Add active class to clicked button
-            this.classList.add('active');
-            
-            const userType = this.dataset.type;
-            userTypeField.value = userType;
-            
-            // Show/hide vendor fields
-            if (userType === 'vendor') {
-                vendorFields.style.display = 'block';
-                // Make vendor fields required
-                document.getElementById('id_business_name').required = true;
-            } else {
-                vendorFields.style.display = 'none';
-                // Remove required from vendor fields
-                document.getElementById('id_business_name').required = false;
-            }
-        });
-    });
-
-    // Password strength indicator
+    const steps = document.querySelectorAll('.step');
     const password1 = document.getElementById('id_password1');
     const password2 = document.getElementById('id_password2');
+    const passwordStrength = document.getElementById('passwordStrength');
+    const passwordStrengthText = document.getElementById('passwordStrengthText');
+    const passwordMatchText = document.getElementById('passwordMatchText');
     
-    function checkPasswordMatch() {
-        if (password1.value && password2.value) {
-            if (password1.value !== password2.value) {
-                password2.style.borderColor = '#dc3545';
-            } else {
-                password2.style.borderColor = '#28a745';
-            }
-        }
-    }
+    // Current step
+    let currentStep = 1;
     
-    password1.addEventListener('input', checkPasswordMatch);
+    // Role Selection
+    roleCards.forEach(card => {
+        card.addEventListener('click', function() {
+            if (this.classList.contains('disabled')) return;
+            
+            // Update active card
+            roleCards.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Update user type
+            const role = this.dataset.role;
+            userTypeField.value = role;
+            
+            // Show role-specific fields
+            roleFields.forEach(field => {
+                field.classList.remove('active');
+                if (field.id === `${role}Fields`) {
+                    field.classList.add('active');
+                }
+            });
+            
+            // Update step 2 fields based on role
+            updateStep2Fields(role);
+        });
+    });
+    
+    // Password Strength Checker
+    password1.addEventListener('input', function() {
+        checkPasswordStrength(this.value);
+        checkPasswordMatch();
+    });
+    
     password2.addEventListener('input', checkPasswordMatch);
     
-    // Form submission loading state
+    // Form submission
     const form = document.getElementById('registrationForm');
-    form.addEventListener('submit', function() {
+    form.addEventListener('submit', function(e) {
+        // Validate role-specific fields
+        const role = userTypeField.value;
+        if (role === 'vendor') {
+            const businessName = document.getElementById('id_business_name');
+            if (!businessName.value.trim()) {
+                e.preventDefault();
+                showAlert('Please enter your business name', 'danger');
+                businessName.focus();
+                return;
+            }
+        } else if (role === 'client') {
+            const company = document.getElementById('id_company');
+            if (!company.value.trim()) {
+                e.preventDefault();
+                showAlert('Please enter your company name', 'danger');
+                company.focus();
+                return;
+            }
+        }
+        
+        // Loading state
         const submitBtn = this.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Creating Account...';
@@ -496,8 +807,88 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = false;
         }, 5000);
     });
-
-    // Auto-focus first field
+    
+    // Functions
+    function updateStep2Fields(role) {
+        // Update step indicator
+        steps.forEach(step => step.classList.remove('active'));
+        steps[0].classList.add('active');
+        currentStep = 1;
+    }
+    
+    function checkPasswordStrength(password) {
+        let strength = 0;
+        let text = 'Password strength';
+        
+        // Length check
+        if (password.length >= 8) strength++;
+        if (password.length >= 12) strength++;
+        
+        // Character variety checks
+        if (/[A-Z]/.test(password)) strength++;
+        if (/[0-9]/.test(password)) strength++;
+        if (/[^A-Za-z0-9]/.test(password)) strength++;
+        
+        // Update UI
+        const strengthClasses = ['', 'weak', 'fair', 'good', 'strong', 'strong'];
+        const strengthTexts = ['', 'Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+        
+        passwordStrength.className = 'strength-meter-fill ' + strengthClasses[strength];
+        passwordStrengthText.textContent = strengthTexts[strength];
+        passwordStrengthText.style.color = getStrengthColor(strength);
+    }
+    
+    function getStrengthColor(strength) {
+        switch(strength) {
+            case 0: case 1: return '#dc3545';
+            case 2: return '#ffc107';
+            case 3: return '#28a745';
+            case 4: case 5: return '#20c997';
+            default: return '#6c757d';
+        }
+    }
+    
+    function checkPasswordMatch() {
+        const p1 = password1.value;
+        const p2 = password2.value;
+        
+        if (!p2) {
+            passwordMatchText.textContent = '';
+            passwordMatchText.className = 'text-small mt-2';
+            return;
+        }
+        
+        if (p1 === p2) {
+            passwordMatchText.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i>Passwords match';
+            passwordMatchText.className = 'text-small mt-2 text-success';
+        } else {
+            passwordMatchText.innerHTML = '<i class="fas fa-times-circle text-danger me-1"></i>Passwords do not match';
+            passwordMatchText.className = 'text-small mt-2 text-danger';
+        }
+    }
+    
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+        alertDiv.innerHTML = `
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        const form = document.getElementById('registrationForm');
+        form.insertBefore(alertDiv, form.querySelector('button[type="submit"]'));
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+    
+    // Initialize
+    document.getElementById('customerFields').classList.add('active');
     document.getElementById('id_first_name').focus();
 });
 </script>

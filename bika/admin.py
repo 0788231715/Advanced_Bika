@@ -3,6 +3,8 @@ from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
 from django.urls import path
+from django.utils.html import format_html
+from django.urls import reverse 
 from django.utils import timezone
 from django.utils.html import format_html
 from django.db.models import Q, F, Count, Sum
@@ -469,8 +471,8 @@ class ProductAdmin(admin.ModelAdmin):
     action_buttons.short_description = 'Actions'
     
     def activate_products(self, request, queryset):
-        updated = queryset.update(status='active')
-        self.message_user(request, f"{updated} products activated.")
+        queryset.update(status='active')
+        self.message_user(request, f"{queryset.count()} products activated.")
     activate_products.short_description = "Activate selected products"
     
     def draft_products(self, request, queryset):
@@ -618,10 +620,25 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(PaymentGatewaySettings)
 class PaymentGatewaySettingsAdmin(admin.ModelAdmin):
-    list_display = ['gateway_display', 'is_active', 'environment', 'display_name']
+    list_display = ['gateway_display', 'is_active', 'environment', 'display_name', 'api_user']
     list_filter = ['is_active', 'environment', 'gateway']
-    search_fields = ['display_name', 'gateway']
+    search_fields = ['display_name', 'gateway', 'api_user', 'merchant_id']
     readonly_fields = ['updated_at']
+    fieldsets = (
+        (None, {
+            'fields': ('gateway', 'display_name', 'is_active', 'environment', 'supported_countries', 'supported_currencies')
+        }),
+        ('API Credentials', {
+            'fields': ('api_key', 'api_secret', 'merchant_id', 'webhook_secret', 'api_user', 'api_password'),
+            'description': 'Enter credentials provided by the payment gateway. Some fields may be specific to certain gateways.'
+        }),
+        ('Configuration & Fees', {
+            'fields': ('base_url', 'callback_url', 'transaction_fee_percent', 'transaction_fee_fixed')
+        }),
+        ('Timestamps', {
+            'fields': ('updated_at',)
+        }),
+    )
     
     def gateway_display(self, obj):
         return obj.get_gateway_display()
@@ -633,6 +650,182 @@ class CurrencyExchangeRateAdmin(admin.ModelAdmin):
     list_filter = ['base_currency', 'target_currency']
     search_fields = ['base_currency', 'target_currency']
     readonly_fields = ['last_updated']
+
+@admin.register(ShippingMethod)
+class ShippingMethodAdmin(admin.ModelAdmin):
+    list_display = ['name', 'base_cost', 'is_active', 'estimated_delivery_min_days', 'estimated_delivery_max_days', 'updated_at']
+    list_filter = ['is_active', 'base_cost']
+    search_fields = ['name', 'description']
+    list_editable = ['is_active', 'base_cost', 'estimated_delivery_min_days', 'estimated_delivery_max_days']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'description', 'is_active')
+        }),
+        ('Pricing & Delivery', {
+            'fields': ('base_cost', 'estimated_delivery_min_days', 'estimated_delivery_max_days')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+# ==================== SUPPLIER & PURCHASE ORDER ADMIN ====================
+
+@admin.register(Supplier)
+class SupplierAdmin(admin.ModelAdmin):
+    list_display = ['name', 'contact_person', 'email', 'phone', 'city', 'country', 'updated_at']
+    search_fields = ['name', 'contact_person', 'email', 'phone']
+    list_filter = ['country', 'city']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'contact_person', 'email', 'phone', 'payment_terms', 'notes')
+        }),
+        ('Address Information', {
+            'fields': ('address', 'city', 'country')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+class PurchaseOrderItemInline(admin.TabularInline):
+    model = PurchaseOrderItem
+    extra = 1 # Number of empty forms to display
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(admin.ModelAdmin):
+    list_display = ['order_number', 'supplier', 'ordered_by', 'order_date', 'expected_delivery_date', 'status', 'total_amount']
+    list_filter = ['status', 'supplier', 'order_date']
+    search_fields = ['order_number', 'supplier__name', 'ordered_by__username']
+    date_hierarchy = 'order_date'
+    inlines = [PurchaseOrderItemInline]
+    readonly_fields = ['order_number', 'created_at', 'updated_at'] # order_number should be set automatically
+    fieldsets = (
+        (None, {
+            'fields': ('supplier', 'ordered_by', 'status', 'notes')
+        }),
+        ('Dates', {
+            'fields': ('expected_delivery_date', 'actual_delivery_date', 'order_date'),
+            'classes': ('collapse',),
+        }),
+        ('Totals', {
+            'fields': ('total_amount',) # total_amount can be updated based on items
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        total_amount = Decimal('0.00')
+        for instance in instances:
+            if instance.product and instance.quantity and instance.unit_price:
+                total_amount += instance.total_price
+            instance.save()
+        form.instance.total_amount = total_amount
+        form.instance.save()
+        formset.save_m2m() # Required if you have ManyToMany fields in inlines
+    
+    # Override save_model to ensure total_amount is calculated on save
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Recalculate total amount after items are saved/changed
+        obj.total_amount = sum(item.total_price for item in obj.items.all())
+        obj.save(update_fields=['total_amount'])
+
+
+@admin.register(PurchaseOrderItem)
+class PurchaseOrderItemAdmin(admin.ModelAdmin):
+    list_display = ['purchase_order', 'product', 'quantity', 'unit_price', 'total_price', 'status', 'updated_at']
+    list_filter = ['status', 'product__category', 'purchase_order__supplier']
+    search_fields = ['product__name', 'purchase_order__order_number']
+    readonly_fields = ['created_at', 'updated_at', 'total_price']
+    list_editable = ['quantity', 'unit_price', 'status']
+
+@admin.register(InventoryTransfer)
+class InventoryTransferAdmin(admin.ModelAdmin):
+    list_display = ['transfer_number', 'product', 'quantity', 'source_location', 
+                   'destination_location', 'status', 'status_badge', 'requested_by', 'transfer_date'] # Added 'status'
+    list_filter = ['status', 'source_location', 'destination_location', 'transfer_date']
+    search_fields = ['transfer_number', 'product__name', 'requested_by__username']
+    date_hierarchy = 'transfer_date'
+    readonly_fields = ['transfer_number', 'transfer_date', 'shipped_date', 'received_date']
+    list_editable = ['status'] # Allow quick status updates
+    
+    fieldsets = (
+        ('Transfer Details', {
+            'fields': ('transfer_number', 'product', 'quantity', 'status', 'notes')
+        }),
+        ('Locations', {
+            'fields': ('source_location', 'destination_location')
+        }),
+        ('Personnel & Dates', {
+            'fields': ('requested_by', 'approved_by', 'transfer_date', 'shipped_date', 'received_date'),
+        }),
+    )
+
+    def status_badge(self, obj):
+        colors = {
+            'pending': 'secondary',
+            'in_transit': 'warning',
+            'received': 'success',
+            'cancelled': 'danger',
+            'failed': 'dark',
+        }
+        color = colors.get(obj.status, 'secondary')
+        return format_html(
+            '<span class="badge badge-{}">{}</span>',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    
+    # Custom actions
+    actions = ['mark_as_in_transit', 'mark_as_received', 'mark_as_cancelled']
+
+    def mark_as_in_transit(self, request, queryset):
+        count = 0
+        for transfer in queryset:
+            if transfer.mark_as_shipped(request.user):
+                count += 1
+        self.message_user(request, f"{count} transfers marked as in transit.")
+    mark_as_in_transit.short_description = "Mark selected transfers as In Transit"
+
+    def mark_as_received(self, request, queryset):
+        count = 0
+        for transfer in queryset:
+            if transfer.mark_as_received(request.user):
+                count += 1
+        self.message_user(request, f"{count} transfers marked as received.")
+    mark_as_received.short_description = "Mark selected transfers as Received"
+
+    def mark_as_cancelled(self, request, queryset):
+        updated = queryset.update(status='cancelled')
+        self.message_user(request, f"{updated} transfers marked as cancelled.")
+    mark_as_cancelled.short_description = "Mark selected transfers as Cancelled"
+
+@admin.register(ProductPriceHistory)
+class ProductPriceHistoryAdmin(admin.ModelAdmin):
+    list_display = ['product', 'old_price', 'new_price', 'change_date', 'changed_by', 'reason']
+    list_filter = ['change_date', 'changed_by', 'reason']
+    search_fields = ['product__name', 'product__sku', 'reason']
+    readonly_fields = ['change_date', 'old_price', 'new_price', 'product', 'changed_by'] # All fields should be read-only after creation
+    list_per_page = 20
+
+@admin.register(InventoryMovement)
+class InventoryMovementAdmin(admin.ModelAdmin):
+    list_display = ['item', 'movement_type', 'from_location', 'to_location', 
+                   'quantity_moved', 'moved_by', 'movement_date']
+    list_filter = ['movement_type', 'from_location', 'to_location', 'movement_date']
+    search_fields = ['item__name', 'item__sku', 'moved_by__username', 'notes']
+    date_hierarchy = 'movement_date'
+    readonly_fields = ['movement_date']
+    list_per_page = 20
 
 # ==================== FRUIT MONITORING MODELS ====================
 
@@ -806,11 +999,132 @@ class ProductDatasetAdmin(admin.ModelAdmin):
         return obj.get_dataset_type_display()
     dataset_type_display.short_description = 'Type'
 
+@admin.register(ProductAIInsights)
+
+class ProductAIInsightsAdmin(admin.ModelAdmin):
+
+    list_display = [
+
+        'product', 'predicted_stock_level', 'predicted_out_of_stock_date', 
+
+        'predicted_expiry_date', 'predicted_quality_class_badge', 
+
+        'demand_forecast_next_7_days', 'prediction_confidence', 'last_analyzed', 'analysis_model_used'
+
+    ]
+
+    list_filter = ['predicted_quality_class', 'analysis_model_used__name', 'last_analyzed']
+
+    search_fields = [
+
+        'product__name', 'product__sku', 'predicted_quality_class', 
+
+        'analysis_model_used__name'
+
+    ]
+
+    readonly_fields = ['last_analyzed']
+
+    list_per_page = 20
+
+
+
+    def predicted_quality_class_badge(self, obj):
+
+        colors = {
+
+            'Excellent': 'success',
+
+            'Good': 'info',
+
+            'Fair': 'warning',
+
+            'Poor': 'danger',
+
+            'Critical': 'dark',
+
+        }
+
+        color = colors.get(obj.predicted_quality_class, 'secondary')
+
+        return format_html(
+
+            '<span class="badge badge-{}">{}</span>',
+
+            color, obj.predicted_quality_class
+
+        )
+
+    predicted_quality_class_badge.short_description = 'Predicted Quality'
+
+
+
+    fieldsets = (
+
+        ('Product Linkage', {
+
+            'fields': ('product', 'inventory_item', 'storage_location'),
+
+            'description': 'Link this insight to a general product, a specific inventory item, or a product in a location.'
+
+        }),
+
+        ('Stock Predictions', {
+
+            'fields': ('predicted_stock_level', 'predicted_out_of_stock_date'),
+
+        }),
+
+        ('Expiry & Quality Predictions', {
+
+            'fields': ('predicted_expiry_date', 'predicted_quality_class'),
+
+        }),
+
+        ('Demand Forecasting', {
+
+            'fields': ('demand_forecast_next_7_days', 'demand_forecast_next_30_days'),
+
+        }),
+
+        ('AI Analysis Details', {
+
+            'fields': ('prediction_confidence', 'last_analyzed', 'analysis_model_used'),
+
+            'classes': ('collapse',),
+
+        }),
+
+    )
+
+
+
+@admin.register(AIPredictionAccuracy)
+
+class AIPredictionAccuracyAdmin(admin.ModelAdmin):
+
+    list_display = ['model', 'prediction_type', 'metric_name', 'metric_value', 'evaluation_date', 'product']
+
+    list_filter = ['prediction_type', 'model', 'metric_name', 'evaluation_date']
+
+    search_fields = ['product__name', 'model__name', 'notes']
+
+    readonly_fields = ['evaluation_date', 'period_start', 'period_end']
+
+    list_per_page = 20
+
+
+
 @admin.register(TrainedModel)
+
 class TrainedModelAdmin(admin.ModelAdmin):
+
     list_display = ['name', 'model_type_display', 'dataset', 'accuracy_percentage', 
+
                    'training_date', 'is_active']
+
     list_filter = ['model_type', 'is_active', 'training_date']
+
     search_fields = ['name', 'dataset__name']
     
     def model_type_display(self, obj):
@@ -827,13 +1141,30 @@ class TrainedModelAdmin(admin.ModelAdmin):
 
 @admin.register(ProductAlert)
 class ProductAlertAdmin(admin.ModelAdmin):
-    list_display = ['product', 'alert_type_display', 'severity_badge', 'is_resolved', 
+    list_display = ['get_product_or_item', 'alert_type_display', 'severity_badge', 'is_resolved', 
                    'created_at', 'resolved_at']
-    list_filter = ['alert_type', 'severity', 'is_resolved', 'created_at']
-    search_fields = ['product__name', 'message']
+    list_filter = ['alert_type', 'severity', 'is_resolved', 'created_at', 'product', 'inventory_item__location']
+    search_fields = ['product__name', 'inventory_item__name', 'message']
     readonly_fields = ['created_at', 'resolved_at']
-    list_editable = ['is_resolved']  # This is in list_display
+    list_editable = ['is_resolved']
     actions = ['mark_resolved', 'mark_unresolved']
+
+    def get_product_or_item(self, obj):
+        if obj.inventory_item:
+            return format_html(
+                'Inventory Item: <a href="{}">{}</a> (Location: {})',
+                reverse('admin:bika_inventoryitem_change', args=[obj.inventory_item.id]),
+                obj.inventory_item.name,
+                obj.inventory_item.location.name if obj.inventory_item.location else 'N/A'
+            )
+        elif obj.product:
+            return format_html(
+                'Product: <a href="{}">{}</a>',
+                reverse('admin:bika_product_change', args=[obj.product.id]),
+                obj.product.name
+            )
+        return 'N/A'
+    get_product_or_item.short_description = 'Alert Target'
     
     def alert_type_display(self, obj):
         return obj.get_alert_type_display()
@@ -862,7 +1193,6 @@ class ProductAlertAdmin(admin.ModelAdmin):
         updated = queryset.update(is_resolved=False, resolved_at=None, resolved_by=None)
         self.message_user(request, f"{updated} alerts marked as unresolved.")
     mark_unresolved.short_description = "Mark as unresolved"
-
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ['user', 'title', 'notification_type_display', 'is_read', 

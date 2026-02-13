@@ -15,7 +15,8 @@ from .models import (
     ProductAlert, Notification, ProductDataset, TrainedModel,
     PaymentGatewaySettings, CurrencyExchangeRate, Testimonial,
     InventoryItem, Delivery, DeliveryItem, DeliveryStatusHistory,
-    InventoryHistory, ClientRequest, UserRole
+    InventoryHistory, ClientRequest, UserRole, Address,
+    NotificationSettings, TwoFactorSettings
 )
 
 User = get_user_model()
@@ -207,6 +208,42 @@ class VendorProfileForm(forms.ModelForm):
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
 
+# ==================== ADDRESS FORM ====================
+
+class AddressForm(forms.ModelForm):
+    """Form for creating/editing addresses"""
+    class Meta:
+        model = Address
+        fields = [
+            'title', 'full_name', 'phone_number', 'street_address',
+            'city', 'state', 'postal_code', 'country',
+            'is_default_shipping', 'is_default_billing'
+        ]
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Home, Work'}),
+            'full_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Full Name'}),
+            'phone_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Phone Number'}),
+            'street_address': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Street Address'}),
+            'city': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'City'}),
+            'state': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'State/Province'}),
+            'postal_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Postal Code'}),
+            'country': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Country'}),
+            'is_default_shipping': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_default_billing': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+    
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.user:
+            instance.user = self.user
+        if commit:
+            instance.save()
+        return instance
+
 # ==================== PRODUCT FORMS ====================
 
 class ProductForm(forms.ModelForm):
@@ -283,6 +320,69 @@ class ProductForm(forms.ModelForm):
     def clean_stock_quantity(self):
         stock_quantity = self.cleaned_data.get('stock_quantity')
         if stock_quantity and stock_quantity < 0:
+            raise ValidationError("Stock quantity cannot be negative.")
+        return stock_quantity
+
+class ClientProductCreationForm(forms.ModelForm):
+    owner = forms.ModelChoiceField(
+        queryset=CustomUser.objects.filter(user_type='customer'),
+        label="Client/Customer",
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    
+    class Meta:
+        model = Product
+        fields = [
+            'owner', 'name', 'category', 'description', 'image',
+            'price', 'storage_charges', 'client_price',
+            'stock_quantity', 'is_approved', 'is_available'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Product Name'}),
+            'category': forms.Select(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': 'Detailed product description'}),
+            'image': forms.FileInput(attrs={'class': 'form-control'}),
+            'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Selling Price'}),
+            'storage_charges': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Storage Charges per Unit'}),
+            'client_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Price Charged to Client'}),
+            'stock_quantity': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '0'}),
+            'is_approved': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_available': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set initial values for new products
+        if not self.instance.pk:
+            self.fields['is_approved'].initial = True
+            self.fields['is_available'].initial = True
+            self.fields['storage_charges'].initial = 0.00
+            self.fields['client_price'].initial = 0.00
+        
+        # Populate category choices
+        self.fields['category'].queryset = ProductCategory.objects.filter(is_active=True)
+
+    def clean_price(self):
+        price = self.cleaned_data.get('price')
+        if price is not None and price < 0:
+            raise ValidationError("Selling price cannot be negative.")
+        return price
+
+    def clean_storage_charges(self):
+        storage_charges = self.cleaned_data.get('storage_charges')
+        if storage_charges is not None and storage_charges < 0:
+            raise ValidationError("Storage charges cannot be negative.")
+        return storage_charges
+
+    def clean_client_price(self):
+        client_price = self.cleaned_data.get('client_price')
+        if client_price is not None and client_price < 0:
+            raise ValidationError("Client price cannot be negative.")
+        return client_price
+
+    def clean_stock_quantity(self):
+        stock_quantity = self.cleaned_data.get('stock_quantity')
+        if stock_quantity is not None and stock_quantity < 0:
             raise ValidationError("Stock quantity cannot be negative.")
         return stock_quantity
 
@@ -1138,22 +1238,38 @@ class UserRoleForm(forms.ModelForm):
         fields = ['user', 'role', 'permissions']
         widgets = {
             'user': forms.Select(attrs={'class': 'form-control'}),
-            'role': forms.Select(attrs={'class': 'form-control'}),
+            'role': forms.Select(attrs={'class': 'form-control form-select'}),
             'permissions': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 4,
-                'placeholder': 'Enter permissions as JSON (e.g., {"allowed": ["view_inventory", "edit_deliveries"]})'
+                'placeholder': 'Enter permissions as JSON (e.g., {"allowed": ["view_inventory", "edit_deliveries"], "denied": ["delete_product"]})'
             }),
         }
     
     def clean_permissions(self):
         permissions = self.cleaned_data.get('permissions')
-        try:
-            if permissions:
-                json.loads(permissions)
-        except json.JSONDecodeError:
-            raise ValidationError("Invalid JSON format for permissions")
-        return permissions
+        if permissions:
+            try:
+                if isinstance(permissions, str):
+                    permissions_data = json.loads(permissions)
+                else:
+                    permissions_data = permissions
+
+                if not isinstance(permissions_data, dict) or \
+                   'allowed' not in permissions_data or \
+                   'denied' not in permissions_data:
+                    raise ValidationError("Permissions must be a dictionary with 'allowed' and 'denied' keys.")
+                
+                if not isinstance(permissions_data['allowed'], list) or \
+                   not isinstance(permissions_data['denied'], list):
+                    raise ValidationError("Permissions 'allowed' and 'denied' must be lists.")
+                
+                return json.dumps(permissions_data) if isinstance(permissions, str) else permissions_data
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for permissions.")
+            except Exception as e:
+                raise ValidationError(f"Error parsing permissions: {e}")
+        return {}
 
 class RoleAssignmentForm(forms.Form):
     """Form for bulk role assignment"""
@@ -1365,46 +1481,26 @@ class AnalyticsDashboardForm(forms.Form):
 
 # ==================== EMAIL & NOTIFICATION FORMS ====================
 
-class NotificationSettingsForm(forms.Form):
+class NotificationSettingsForm(forms.ModelForm):
     """Form for notification settings"""
-    email_notifications = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
-    )
-    push_notifications = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
-    )
-    sms_notifications = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
-    )
-    
-    # Notification types
-    notification_types = forms.MultipleChoiceField(
-        choices=[
-            ('order_updates', 'Order Updates'),
-            ('delivery_updates', 'Delivery Updates'),
-            ('inventory_alerts', 'Inventory Alerts'),
-            ('quality_alerts', 'Quality Alerts'),
-            ('system_alerts', 'System Alerts'),
-            ('promotions', 'Promotions & Offers'),
-        ],
-        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'})
-    )
-    
-    # Alert severity
-    alert_severity = forms.MultipleChoiceField(
-        choices=[
-            ('critical', 'Critical Alerts'),
-            ('high', 'High Priority'),
-            ('medium', 'Medium Priority'),
-            ('low', 'Low Priority'),
-        ],
-        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'})
-    )
+    class Meta:
+        model = NotificationSettings
+        fields = [
+            'email_notifications', 'push_notifications', 'sms_notifications',
+            'order_updates', 'delivery_updates', 'inventory_alerts',
+            'quality_alerts', 'system_alerts', 'promotions'
+        ]
+        widgets = {
+            'email_notifications': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'push_notifications': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'sms_notifications': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'order_updates': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'delivery_updates': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'inventory_alerts': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'quality_alerts': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'system_alerts': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'promotions': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
 
 class EmailTemplateForm(forms.Form):
     """Form for email templates"""
@@ -1556,11 +1652,11 @@ class BulkProductActionForm(forms.Form):
         except ValueError:
             raise ValidationError("Invalid product IDs format.")
 
-# ==================== CLIENT REQUEST FORM (ENHANCED) ====================
+# ==================== CLIENT REQUEST FORM ====================
 
 class ClientRequestForm(forms.ModelForm):
     inventory_items = forms.ModelMultipleChoiceField(
-        queryset=InventoryItem.objects.none(),  # Will be set in __init__
+        queryset=InventoryItem.objects.none(),
         required=False,
         widget=forms.SelectMultiple(attrs={'class': 'form-control'})
     )
@@ -1600,7 +1696,6 @@ class ClientRequestForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         
         if self.user:
-            # Only show inventory items belonging to this client
             self.fields['inventory_items'].queryset = InventoryItem.objects.filter(
                 client=self.user
             )
@@ -1740,26 +1835,47 @@ class ChangePasswordForm(PasswordChangeForm):
         for field in self.fields.values():
             field.widget.attrs.update({'class': 'form-control'})
 
-class TwoFactorSetupForm(forms.Form):
+class TwoFactorSetupForm(forms.ModelForm):
+    """Form for 2FA settings"""
     enable_2fa = forms.BooleanField(
+        label="Enable Two-Factor Authentication",
         required=False,
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
-    method = forms.ChoiceField(
-        choices=[
-            ('app', 'Authenticator App'),
-            ('sms', 'SMS'),
-            ('email', 'Email'),
-        ],
-        widget=forms.RadioSelect(attrs={'class': 'form-check-input'})
-    )
-    phone_number = forms.CharField(
-        required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Phone number for SMS verification'
-        })
-    )
+
+    class Meta:
+        model = TwoFactorSettings
+        fields = ['is_enabled', 'method', 'phone_number']
+        widgets = {
+            'method': forms.Select(attrs={'class': 'form-control'}),
+            'phone_number': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Phone number for SMS verification'
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance:
+            self.initial['enable_2fa'] = self.instance.is_enabled
+        self.fields['is_enabled'].widget = forms.HiddenInput()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        enable_2fa = cleaned_data.get('enable_2fa')
+        method = cleaned_data.get('method')
+        phone_number = cleaned_data.get('phone_number')
+
+        if enable_2fa and method == 'sms' and not phone_number:
+            self.add_error('phone_number', "Phone number is required for SMS 2FA.")
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.is_enabled = self.cleaned_data.get('enable_2fa')
+        if commit:
+            instance.save()
+        return instance
 
 class APIKeyForm(forms.Form):
     name = forms.CharField(
@@ -2167,8 +2283,11 @@ __all__ = [
     # User Profile Forms
     'UserProfileForm', 'VendorProfileForm',
     
+    # Address Form
+    'AddressForm',
+    
     # Product Forms
-    'ProductForm', 'ProductImageForm', 'ProductImageInlineForm', 'ProductReviewForm',
+    'ProductForm', 'ProductImageForm', 'ProductImageInlineForm', 'ProductReviewForm', 'ClientProductCreationForm',
     
     # Category Forms
     'ProductCategoryForm',

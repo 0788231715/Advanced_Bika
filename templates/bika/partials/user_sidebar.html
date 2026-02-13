@@ -43,6 +43,10 @@
                 <i class="fas fa-shopping-cart me-2"></i>Shopping Cart
                 <span class="badge bg-primary float-end">{{ user.cart_items.count }}</span>
             </a>
+            <a href="{% url 'bika:user_address_book' %}"
+               class="list-group-item list-group-item-action {% if 'address' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-map-marker-alt me-2"></i>Address Book
+            </a>
             <a href="{% url 'bika:user_settings' %}" 
                class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'user_settings' %}active{% endif %}">
                 <i class="fas fa-cog me-2"></i>Settings

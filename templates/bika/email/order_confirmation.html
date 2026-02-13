@@ -1,0 +1,189 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Confirmation #{{ order.order_number }} - Bika</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #28a745; /* Success green */
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 20px;
+            text-align: left;
+        }
+        .content h2 {
+            color: #28a745;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .item-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .item-table th, .item-table td {
+            border: 1px solid #eeeeee;
+            padding: 8px;
+            text-align: left;
+        }
+        .item-table th {
+            background-color: #f2f2f2;
+        }
+        .total-section {
+            margin-top: 20px;
+            text-align: right;
+        }
+        .total-section table {
+            width: 100%;
+            max-width: 300px;
+            float: right;
+            border-collapse: collapse;
+        }
+        .total-section table td {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .total-section table tr:last-child td {
+            border-bottom: none;
+            font-weight: bold;
+            font-size: 18px;
+            background-color: #f2f2f2;
+        }
+        .button {
+            display: inline-block;
+            background-color: #007bff;
+            color: #ffffff;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #777777;
+            border-top: 1px solid #eeeeee;
+            margin-top: 20px;
+        }
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Order Confirmation</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{ user.first_name|default:"User" }},</p>
+            <p>Thank you for your order with Bika! Your order has been successfully placed and is being processed.</p>
+            
+            <h2>Order Details #{{ order.order_number }}</h2>
+            <p>
+                <strong>Order Date:</strong> {{ order.created_at|date:"F d, Y H:i" }}<br>
+                <strong>Payment Method:</strong> {{ order.payment_method }}<br>
+                <strong>Order Status:</strong> {{ order.get_status_display }}
+            </p>
+
+            <h3>Items in Your Order:</h3>
+            <table class="item-table">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items.all %}
+                    <tr>
+                        <td>{{ item.product.name }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>${{ item.price|floatformat:2 }}</td>
+                        <td>${{ item.total_price|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="total-section">
+                <table>
+                    <tr>
+                        <td>Subtotal:</td>
+                        <td>${{ order.subtotal|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td>Shipping:</td>
+                        <td>${{ order.shipping_cost|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td>Tax:</td>
+                        <td>${{ order.tax_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Grand Total:</strong></td>
+                        <td><strong>${{ order.grand_total|floatformat:2 }}</strong></td>
+                    </tr>
+                </table>
+                <div style="clear: both;"></div>
+            </div>
+
+            <h3 style="margin-top: 30px;">Shipping Information:</h3>
+            <p>
+                <strong>Shipping Address:</strong><br>
+                {{ order.shipping_address.full_name }}<br>
+                {{ order.shipping_address.address_line1 }}<br>
+                {% if order.shipping_address.address_line2 %}{{ order.shipping_address.address_line2 }}<br>{% endif %}
+                {{ order.shipping_address.city }}, {{ order.shipping_address.state }} {{ order.shipping_address.zip_code }}<br>
+                {{ order.shipping_address.country }}
+            </p>
+
+            {% if order.estimated_delivery %}
+            <p><strong>Estimated Delivery:</strong> {{ order.estimated_delivery|date:"F d, Y" }}</p>
+            {% endif %}
+
+            <p style="margin-top: 20px;">You can track the status of your order by visiting your <a href="{{ order_history_url }}">Order History</a>.</p>
+            <p>If you have any questions, please contact our support team at <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+            <p>Sincerely,<br>The Bika Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; {% now "Y" %} Bika. All rights reserved.</p>
+            <p>
+                <a href="{{ site_url }}">Visit our website</a> | 
+                <a href="{{ privacy_policy_url }}">Privacy Policy</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

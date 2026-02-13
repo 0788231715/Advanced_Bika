@@ -1,0 +1,109 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Bika!</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #28a745; /* Welcome Green */
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 20px;
+            text-align: left;
+        }
+        .content h2 {
+            color: #007bff;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #007bff;
+            color: #ffffff;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #777777;
+            border-top: 1px solid #eeeeee;
+            margin-top: 20px;
+        }
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to Bika!</h1>
+        </div>
+        <div class="content">
+            <p>Hello {% if user.first_name %}{{ user.first_name }}{% else %}{{ user.username }}{% endif %},</p>
+            <p>Welcome to Bika, your ultimate destination for high-quality products and seamless inventory solutions!</p>
+            
+            <p>We're thrilled to have you join our community. With Bika, you can:</p>
+            <ul>
+                <li>Discover a wide range of products from trusted vendors.</li>
+                <li>Enjoy a smooth and secure shopping experience.</li>
+                <li>Track your orders and manage your preferences with ease.</li>
+                {% if user.is_vendor %}
+                <li>List and manage your own products on our marketplace.</li>
+                {% elif user.is_client %}
+                <li>Access our premium storage and delivery services.</li>
+                {% endif %}
+            </ul>
+
+            <p style="text-align: center;">
+                <a href="{{ site_url }}" class="button">Start Exploring Now!</a>
+            </p>
+
+            <p style="margin-top: 20px;">
+                Need help getting started? Check out our <a href="{{ faq_url }}">FAQ</a> or contact our <a href="{{ support_url }}">support team</a>.
+            </p>
+            <p>Happy shopping/selling!</p>
+            <p>Sincerely,<br>The Bika Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; {% now "Y" %} Bika. All rights reserved.</p>
+            <p>
+                <a href="{{ site_url }}">Visit our website</a> | 
+                <a href="{{ privacy_policy_url }}">Privacy Policy</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

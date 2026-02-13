@@ -1,5 +1,8 @@
-# bika/context_processors.py
+# bika/context_processors.py - FIXED VERSION
+from decimal import Decimal
 from django.db import DatabaseError
+import datetime
+from django.conf import settings
 from .models import SiteInfo, Service, Cart, ProductCategory, Product, Notification
 
 def site_info(request):
@@ -16,8 +19,8 @@ def site_info(request):
                 tagline="AI-Powered Fruit Quality Monitoring & E-commerce Platform",
                 description="Your Success Is Our Business - Bika provides exceptional services to help your business grow.",
                 email="contact@bika.com",
-                phone="+255 123 456 789",
-                address="Dar es Salaam, Tanzania",
+                phone="+250 798 780 022",
+                address="Kigali, Rwanda",
                 facebook_url="https://facebook.com/bika",
                 twitter_url="https://twitter.com/bika",
                 instagram_url="https://instagram.com/bika",
@@ -33,8 +36,8 @@ def site_info(request):
         context['site_info'] = None
         context['site_name'] = 'Bika'
         context['site_email'] = 'contact@bika.com'
-        context['site_phone'] = '+255 123 456 789'
-        context['site_address'] = 'Dar es Salaam, Tanzania'
+        context['site_phone'] = '+250 798 780 022'
+        context['site_address'] = 'Kigali, Rwanda'
     except Exception as e:
         print(f"SiteInfo error: {e}")
         context['site_info'] = None
@@ -58,20 +61,27 @@ def site_info(request):
     except Exception:
         context['product_categories'] = []
     
-    # 4. Cart Count (for header badge)
+    # 4. Cart Count (for header badge) - FIXED: Using Decimal
     try:
         if request.user.is_authenticated:
             context['cart_count'] = Cart.objects.filter(user=request.user).count()
-            context['cart_total'] = sum(
-                item.total_price for item in 
-                Cart.objects.filter(user=request.user).select_related('product')
-            )
+            
+            # Calculate cart_total using Decimal
+            cart_total = Decimal('0.00')
+            cart_items = Cart.objects.filter(user=request.user).select_related('product')
+            for item in cart_items:
+                item_price = Decimal(str(item.product.price)) if item.product.price else Decimal('0.00')
+                item_quantity = Decimal(str(item.quantity)) if item.quantity else Decimal('0')
+                cart_total += item_price * item_quantity
+            
+            context['cart_total'] = float(cart_total)  # Convert to float for template
         else:
             context['cart_count'] = 0
-            context['cart_total'] = 0
-    except Exception:
+            context['cart_total'] = 0.0
+    except Exception as e:
+        print(f"Cart count error: {e}")
         context['cart_count'] = 0
-        context['cart_total'] = 0
+        context['cart_total'] = 0.0
     
     # 5. Wishlist Count
     try:
@@ -126,11 +136,9 @@ def site_info(request):
         context['user_has_business'] = False
     
     # 9. Current Year (for footer)
-    import datetime
     context['current_year'] = datetime.datetime.now().year
     
     # 10. Development/Production Mode
-    from django.conf import settings
     context['debug_mode'] = settings.DEBUG
     
     # 11. Currency Information
@@ -171,19 +179,27 @@ def site_info(request):
     # 15. Query Parameters (for maintaining filters)
     context['query_params'] = request.GET.urlencode()
     
-    # 16. Meta Information
-    context['meta_description'] = getattr(site_info_obj, 'meta_description', 
-        "Bika is an AI-powered platform for fruit quality monitoring and e-commerce. "
-        "We help businesses optimize storage, predict quality, and increase sales.")
-    
-    context['meta_title'] = getattr(site_info_obj, 'meta_title', 
-        "Bika - AI-Powered Fruit Quality Monitoring & E-commerce Platform")
-    
-    # 17. Social Media URLs
-    context['social_facebook'] = getattr(site_info_obj, 'facebook_url', '')
-    context['social_twitter'] = getattr(site_info_obj, 'twitter_url', '')
-    context['social_instagram'] = getattr(site_info_obj, 'instagram_url', '')
-    context['social_linkedin'] = getattr(site_info_obj, 'linkedin_url', '')
+    # 16. Meta Information - Fixed: check if site_info_obj exists
+    try:
+        context['meta_description'] = getattr(site_info_obj, 'meta_description', 
+            "Bika is an AI-powered platform for fruit quality monitoring and e-commerce. "
+            "We help businesses optimize storage, predict quality, and increase sales.")
+        
+        context['meta_title'] = getattr(site_info_obj, 'meta_title', 
+            "Bika - AI-Powered Fruit Quality Monitoring & E-commerce Platform")
+        
+        # 17. Social Media URLs
+        context['social_facebook'] = getattr(site_info_obj, 'facebook_url', '')
+        context['social_twitter'] = getattr(site_info_obj, 'twitter_url', '')
+        context['social_instagram'] = getattr(site_info_obj, 'instagram_url', '')
+        context['social_linkedin'] = getattr(site_info_obj, 'linkedin_url', '')
+    except:
+        context['meta_description'] = "Bika is an AI-powered platform for fruit quality monitoring and e-commerce."
+        context['meta_title'] = "Bika - AI-Powered Fruit Quality Monitoring & E-commerce Platform"
+        context['social_facebook'] = ''
+        context['social_twitter'] = ''
+        context['social_instagram'] = ''
+        context['social_linkedin'] = ''
     
     return context
 
@@ -198,33 +214,50 @@ def cart_details(request):
                 user=request.user
             ).select_related('product')
             
-            subtotal = sum(item.total_price for item in cart_items)
-            tax_rate = 0.18  # 18% VAT
+            # Calculate subtotal using Decimal
+            subtotal = Decimal('0.00')
+            for item in cart_items:
+                # Ensure we use Decimal for price and quantity
+                item_price = Decimal(str(item.product.price)) if item.product.price else Decimal('0.00')
+                item_quantity = Decimal(str(item.quantity)) if item.quantity else Decimal('0')
+                item_subtotal = item_price * item_quantity
+                subtotal += item_subtotal
+            
+            # Use Decimal for tax rate
+            tax_rate = Decimal('0.18')  # 18% VAT as Decimal
             tax_amount = subtotal * tax_rate
-            shipping_cost = 5000  # Fixed shipping cost
+            
+            # Use Decimal for shipping
+            shipping_cost = Decimal('5000.00')  # Fixed shipping cost
             total_amount = subtotal + tax_amount + shipping_cost
             
+            # Convert to float for template (templates handle floats better)
             context['cart_items_detailed'] = cart_items
-            context['cart_subtotal'] = subtotal
-            context['cart_tax_amount'] = tax_amount
-            context['cart_shipping_cost'] = shipping_cost
-            context['cart_total_amount'] = total_amount
-            context['cart_tax_rate'] = tax_rate
+            context['cart_subtotal'] = float(subtotal)
+            context['cart_tax_amount'] = float(tax_amount)
+            context['cart_shipping_cost'] = float(shipping_cost)
+            context['cart_total_amount'] = float(total_amount)
+            context['cart_tax_rate'] = float(tax_rate * Decimal('100'))  # 18.0 for display
+            context['cart_item_count'] = cart_items.count()
         else:
             context['cart_items_detailed'] = []
-            context['cart_subtotal'] = 0
-            context['cart_tax_amount'] = 0
-            context['cart_shipping_cost'] = 0
-            context['cart_total_amount'] = 0
-            context['cart_tax_rate'] = 0.18
+            context['cart_subtotal'] = 0.0
+            context['cart_tax_amount'] = 0.0
+            context['cart_shipping_cost'] = 0.0
+            context['cart_total_amount'] = 0.0
+            context['cart_tax_rate'] = 18.0
+            context['cart_item_count'] = 0
+            
     except Exception as e:
         print(f"Cart details error: {e}")
+        # Return safe defaults
         context['cart_items_detailed'] = []
-        context['cart_subtotal'] = 0
-        context['cart_tax_amount'] = 0
-        context['cart_shipping_cost'] = 0
-        context['cart_total_amount'] = 0
-        context['cart_tax_rate'] = 0.18
+        context['cart_subtotal'] = 0.0
+        context['cart_tax_amount'] = 0.0
+        context['cart_shipping_cost'] = 0.0
+        context['cart_total_amount'] = 0.0
+        context['cart_tax_rate'] = 18.0
+        context['cart_item_count'] = 0
     
     return context
 
@@ -259,7 +292,7 @@ def user_profile_info(request):
     return context
 
 
-# List of all context processors
+# List of all context processors (optional)
 context_processors_list = [
     'bika.context_processors.site_info',
     'bika.context_processors.cart_details',

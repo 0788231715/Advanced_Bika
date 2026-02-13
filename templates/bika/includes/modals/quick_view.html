@@ -1,0 +1,98 @@
+{% load static %}
+<div class="modal fade" id="quickViewModal" tabindex="-1" aria-labelledby="quickViewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="quickViewModalLabel">
+                    <i class="fas fa-eye me-2"></i>Product Quick View
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-5">
+                        <img src="{% static 'images/placeholder-product.jpg' %}" class="img-fluid rounded" alt="Product Image" id="quickview-image">
+                    </div>
+                    <div class="col-md-7">
+                        <h4 id="quickview-name">Product Name Loading...</h4>
+                        <p class="lead fw-bold text-primary" id="quickview-price">$0.00</p>
+                        <p class="text-muted" id="quickview-short-description">A short description of the product will appear here.</p>
+                        
+                        <hr>
+
+                        <div class="mb-3">
+                            <strong>Category:</strong> <span id="quickview-category"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Availability:</strong> <span id="quickview-availability"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Vendor:</strong> <span id="quickview-vendor"></span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-3">
+                            <label for="quickview-quantity" class="form-label me-2 mb-0">Quantity:</label>
+                            <input type="number" class="form-control w-25 me-3" id="quickview-quantity" value="1" min="1">
+                            <button type="button" class="btn btn-primary" id="quickview-add-to-cart-btn">
+                                <i class="fas fa-cart-plus me-2"></i>Add to Cart
+                            </button>
+                        </div>
+                        
+                        <a href="#" id="quickview-details-link" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-info-circle me-2"></i>View Full Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    #quickview-image {
+        max-height: 300px;
+        object-fit: cover;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var quickViewModal = document.getElementById('quickViewModal');
+        quickViewModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget; 
+            var productId = button.getAttribute('data-product-id');
+            // Assuming you have an API endpoint to fetch product details by ID
+            fetch(`/api/product/${productId}/quickview/`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('quickview-image').src = data.image_url || "{% static 'images/placeholder-product.jpg' %}";
+                    document.getElementById('quickview-name').textContent = data.name;
+                    document.getElementById('quickview-price').textContent = `$${parseFloat(data.price).toFixed(2)}`;
+                    document.getElementById('quickview-short-description').textContent = data.short_description || data.description;
+                    document.getElementById('quickview-category').textContent = data.category;
+                    document.getElementById('quickview-availability').textContent = data.is_in_stock ? 'In Stock' : 'Out of Stock';
+                    document.getElementById('quickview-vendor').textContent = data.vendor;
+                    document.getElementById('quickview-details-link').href = data.details_url;
+                    document.getElementById('quickview-add-to-cart-btn').setAttribute('data-product-id', productId);
+                })
+                .catch(error => {
+                    console.error('Error fetching quick view product data:', error);
+                    document.getElementById('quickview-name').textContent = 'Error loading product.';
+                    document.getElementById('quickview-short-description').textContent = 'Please try again or view full details.';
+                });
+        });
+
+        document.getElementById('quickview-add-to-cart-btn').addEventListener('click', function() {
+            var productId = this.getAttribute('data-product-id');
+            var quantity = document.getElementById('quickview-quantity').value;
+            
+            // Here you would typically make an AJAX call to add the product to the cart
+            console.log(`Adding product ${productId} with quantity ${quantity} to cart from quick view.`);
+            
+            // Simulate successful add to cart
+            alert(`Added ${quantity} of product ${productId} to cart!`);
+            var bsModal = bootstrap.Modal.getInstance(quickViewModal);
+            bsModal.hide();
+        });
+    });
+</script>

@@ -10,10 +10,23 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from django.utils import timezone
 
+import joblib # Added for model loading
+from django.db import transaction # Added for atomic operations
+from django.db.models import Avg # Added
+from django.core.mail import send_mail # Added for sending alert notifications
+from bika.models import (
+    Product, FruitBatch, StorageLocation, CustomUser # Replaced FruitProduct, Batch, Warehouse, added CustomUser
+)
+from bika.ai_integration.models import (
+    FruitPrediction, AlertNotification # For saving predictions and alerts
+)
+from bika.models import TrainedModel # For loading active trained models
+
 # Import AI models from the main models module
 from bika.ai_models import (
     FruitQualityPredictor, FruitRipenessPredictor,
     EthyleneMonitor, FruitDiseasePredictor, FruitPricePredictor,
+    ShelfLifePredictor, # Added
     BikaAIService
 )
 
@@ -30,850 +43,963 @@ class EnhancedBikaAIService(BikaAIService):
         self.data_cache = {}
         self.model_cache = {}
         self.prediction_history = []
+        self.loaded_predictors = {} # Initialize dictionary to hold loaded predictor instances
+        self._load_all_active_ai_models() # Call new method to load all active AI models
+        self.shelf_life_predictor = ShelfLifePredictor() # Added for fallback
+
         
-    def get_model_performance(self, model_type='quality'):
-        """Get performance metrics for trained models"""
-        try:
-            model_dir = os.path.join(settings.MEDIA_ROOT, 'fruit_models')
-            
-            if not os.path.exists(model_dir):
-                return {'error': 'No models directory found'}
-            
-            model_files = [f for f in os.listdir(model_dir) if f.endswith('.pkl')]
-            
-            if not model_files:
-                return {'error': 'No trained models found'}
-            
-            performance_data = []
-            
-            for model_file in model_files:
-                try:
-                    model_path = os.path.join(model_dir, model_file)
-                    
-                    # Try to load model metadata without loading full model
-                    if hasattr(self.quality_predictor, 'load_model_metadata'):
-                        metadata = self.quality_predictor.load_model_metadata(model_path)
-                    else:
-                        # Fallback: load model and get metrics
-                        temp_predictor = FruitQualityPredictor()
-                        if temp_predictor.load_model(model_path):
-                            metadata = {
-                                'file_name': model_file,
-                                'model_type': temp_predictor.model_type,
-                                'accuracy': temp_predictor.model_metrics.get('accuracy', 0),
-                                'training_samples': temp_predictor.model_metrics.get('training_samples', 0),
-                                'created_at': os.path.getctime(model_path)
-                            }
+    def _load_all_active_ai_models(self):
+        """Loads all active trained models from the database into loaded_predictors."""
+        self.loaded_predictors = {} # Clear existing
+        active_models = TrainedModel.objects.filter(is_active=True)
+
+        for model_record in active_models:
+            try:
+                model_path = model_record.model_file.path
+                if os.path.exists(model_path):
+                    # Load model data
+                    model_data = joblib.load(model_path)
+
+                    predictor_instance = None
+                    # Instantiate the correct predictor class based on model_type
+                    if model_record.model_type == 'fruit_quality': # This maps to FruitQualityPredictor in ai_models.py
+                        predictor_instance = FruitQualityPredictor()
+                    elif model_record.model_type == 'ripeness': # Assuming ripeness predictor exists
+                        predictor_instance = FruitRipenessPredictor()
+                    elif model_record.model_type == 'disease': # Assuming disease predictor exists
+                        predictor_instance = FruitDiseasePredictor()
+                    elif model_record.model_type == 'price': # Assuming price predictor exists
+                                                    predictor_instance = FruitPricePredictor()
+                                                elif model_record.model_type == 'shelf_life': # Added
+                                                    predictor_instance = ShelfLifePredictor()
+                                                elif model_record.model_type == 'ethylene': # Added
+                                                    predictor_instance = EthyleneMonitor()                    # Add more model types as needed
+
+                    if predictor_instance and hasattr(predictor_instance, 'load_model'):
+                        # Load the specific model into the predictor instance
+                        if predictor_instance.load_model(model_path):
+                            self.loaded_predictors[model_record.model_type] = predictor_instance
+                            logger.info(f"✅ Loaded {model_record.model_type} model: {model_record.name}")
                         else:
-                            metadata = None
-                    
-                    if metadata:
-                        performance_data.append(metadata)
-                        
-                except Exception as e:
-                    logger.error(f"Error loading model {model_file}: {e}")
-                    continue
-            
-            # Sort by accuracy (descending)
-            performance_data.sort(key=lambda x: x.get('accuracy', 0), reverse=True)
-            
-            return {
-                'total_models': len(performance_data),
-                'best_model': performance_data[0] if performance_data else None,
-                'all_models': performance_data,
-                'average_accuracy': np.mean([m.get('accuracy', 0) for m in performance_data]) if performance_data else 0
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting model performance: {e}")
-            return {'error': str(e)}
-    
-    def validate_dataset(self, csv_file):
-        """Validate dataset before training"""
-        try:
-            # Save file temporarily
-            timestamp = int(timezone.now().timestamp())
-            temp_path = os.path.join('temp_datasets', f'validate_{timestamp}.csv')
-            saved_path = default_storage.save(temp_path, csv_file)
-            full_path = default_storage.path(saved_path)
-            
-            # Load dataset
-            df = pd.read_csv(full_path)
-            
-            # Perform validation checks
-            validation_results = {
-                'total_rows': len(df),
-                'total_columns': len(df.columns),
-                'missing_values': df.isnull().sum().sum(),
-                'duplicate_rows': df.duplicated().sum(),
-                'columns': list(df.columns),
-                'data_types': {col: str(dtype) for col, dtype in df.dtypes.items()}
-            }
-            
-            # Check for required columns for fruit quality prediction
-            required_cols = ['temperature', 'humidity', 'light_intensity', 'co2_level', 'fruit_type', 'quality_class']
-            missing_required = [col for col in required_cols if col not in df.columns]
-            
-            if missing_required:
-                validation_results['missing_required_columns'] = missing_required
-                validation_results['valid_for_training'] = False
-            else:
-                validation_results['missing_required_columns'] = []
-                validation_results['valid_for_training'] = True
-                
-                # Additional quality checks
-                validation_results['quality_class_distribution'] = df['quality_class'].value_counts().to_dict()
-                validation_results['fruit_type_distribution'] = df['fruit_type'].value_counts().to_dict()
-                
-                # Numeric value ranges
-                numeric_cols = ['temperature', 'humidity', 'light_intensity', 'co2_level']
-                for col in numeric_cols:
-                    if col in df.columns:
-                        validation_results[f'{col}_range'] = {
-                            'min': float(df[col].min()),
-                            'max': float(df[col].max()),
-                            'mean': float(df[col].mean()),
-                            'std': float(df[col].std())
-                        }
-            
-            # Calculate data quality score
-            quality_score = 100
-            
-            # Penalize missing values
-            missing_pct = validation_results['missing_values'] / (validation_results['total_rows'] * validation_results['total_columns']) * 100
-            quality_score -= missing_pct * 2
-            
-            # Penalize duplicates
-            duplicate_pct = validation_results['duplicate_rows'] / validation_results['total_rows'] * 100
-            quality_score -= duplicate_pct
-            
-            # Penalize insufficient data
-            if validation_results['total_rows'] < 50:
-                quality_score -= 30
-            elif validation_results['total_rows'] < 100:
-                quality_score -= 15
-            
-            validation_results['data_quality_score'] = max(0, min(100, quality_score))
-            
-            # Recommendations
-            recommendations = []
-            if validation_results['missing_values'] > 0:
-                recommendations.append(f"Remove or impute {validation_results['missing_values']} missing values")
-            
-            if validation_results['duplicate_rows'] > 0:
-                recommendations.append(f"Remove {validation_results['duplicate_rows']} duplicate rows")
-            
-            if validation_results['total_rows'] < 100:
-                recommendations.append(f"Dataset is small ({validation_results['total_rows']} rows). Consider collecting more data.")
-            
-            if missing_required:
-                recommendations.append(f"Add missing columns: {', '.join(missing_required)}")
-            
-            validation_results['recommendations'] = recommendations
-            
-            # Clean up temporary file
-            try:
-                os.remove(full_path)
-            except:
-                pass
-            
-            return validation_results
-            
-        except Exception as e:
-            logger.error(f"Error validating dataset: {e}")
-            return {'error': str(e)}
-    
-    def batch_predict(self, predictions_data):
-        """Make predictions for multiple data points"""
-        try:
-            results = []
-            
-            for data in predictions_data:
-                prediction = self.predict_fruit_quality(
-                    data.get('fruit_name'),
-                    data.get('temperature'),
-                    data.get('humidity'),
-                    data.get('light_intensity'),
-                    data.get('co2_level'),
-                    data.get('batch_id')
-                )
-                
-                if prediction.get('success'):
-                    results.append({
-                        'input_data': data,
-                        'prediction': prediction,
-                        'timestamp': timezone.now().isoformat()
-                    })
-            
-            # Calculate batch statistics
-            if results:
-                quality_classes = [r['prediction']['quality_prediction']['predicted_class'] for r in results]
-                quality_counts = pd.Series(quality_classes).value_counts().to_dict()
-                
-                confidence_scores = [r['prediction']['quality_prediction']['confidence'] for r in results]
-                
-                batch_stats = {
-                    'total_predictions': len(results),
-                    'quality_distribution': quality_counts,
-                    'avg_confidence': np.mean(confidence_scores),
-                    'min_confidence': np.min(confidence_scores),
-                    'max_confidence': np.max(confidence_scores),
-                    'most_common_quality': max(quality_counts.items(), key=lambda x: x[1])[0] if quality_counts else None
-                }
-                
-                # Batch recommendations
-                batch_recommendations = []
-                if 'Rotten' in quality_counts and quality_counts['Rotten'] / len(results) > 0.3:
-                    batch_recommendations.append("High proportion of rotten predictions - immediate action required")
-                
-                if np.mean(confidence_scores) < 0.6:
-                    batch_recommendations.append("Low average confidence - consider model retraining")
-                
-                batch_stats['recommendations'] = batch_recommendations
-            else:
-                batch_stats = {}
-            
-            return {
-                'success': True,
-                'individual_results': results,
-                'batch_statistics': batch_stats,
-                'total_processed': len(predictions_data)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in batch prediction: {e}")
-            return {'error': str(e)}
-    
-    def optimize_storage_conditions(self, fruit_type, current_conditions, target_quality='Good'):
-        """Optimize storage conditions for target quality"""
-        try:
-            # Get fruit type info from database
-            from bika.models import FruitType
-            try:
-                fruit_info = FruitType.objects.get(name__icontains=fruit_type)
-                optimal_temp_range = (float(fruit_info.optimal_temp_min), float(fruit_info.optimal_temp_max))
-                optimal_humidity_range = (float(fruit_info.optimal_humidity_min), float(fruit_info.optimal_humidity_max))
-                optimal_light_max = fruit_info.optimal_light_max
-                optimal_co2_max = fruit_info.optimal_co2_max
-            except:
-                # Use default values if fruit type not found
-                optimal_temp_range = (2.0, 8.0)
-                optimal_humidity_range = (85.0, 95.0)
-                optimal_light_max = 100
-                optimal_co2_max = 400
-            
-            current_temp = current_conditions.get('temperature', 5.0)
-            current_humidity = current_conditions.get('humidity', 90.0)
-            current_light = current_conditions.get('light_intensity', 50.0)
-            current_co2 = current_conditions.get('co2_level', 400.0)
-            
-            # Calculate adjustments needed
-            adjustments = []
-            
-            # Temperature adjustment
-            if current_temp < optimal_temp_range[0]:
-                adjustments.append({
-                    'parameter': 'temperature',
-                    'current': current_temp,
-                    'optimal_min': optimal_temp_range[0],
-                    'optimal_max': optimal_temp_range[1],
-                    'adjustment': f"Increase to {optimal_temp_range[0]} - {optimal_temp_range[1]}°C",
-                    'priority': 'high'
-                })
-            elif current_temp > optimal_temp_range[1]:
-                adjustments.append({
-                    'parameter': 'temperature',
-                    'current': current_temp,
-                    'optimal_min': optimal_temp_range[0],
-                    'optimal_max': optimal_temp_range[1],
-                    'adjustment': f"Decrease to {optimal_temp_range[0]} - {optimal_temp_range[1]}°C",
-                    'priority': 'high'
-                })
-            
-            # Humidity adjustment
-            if current_humidity < optimal_humidity_range[0]:
-                adjustments.append({
-                    'parameter': 'humidity',
-                    'current': current_humidity,
-                    'optimal_min': optimal_humidity_range[0],
-                    'optimal_max': optimal_humidity_range[1],
-                    'adjustment': f"Increase to {optimal_humidity_range[0]} - {optimal_humidity_range[1]}%",
-                    'priority': 'medium'
-                })
-            elif current_humidity > optimal_humidity_range[1]:
-                adjustments.append({
-                    'parameter': 'humidity',
-                    'current': current_humidity,
-                    'optimal_min': optimal_humidity_range[0],
-                    'optimal_max': optimal_humidity_range[1],
-                    'adjustment': f"Decrease to {optimal_humidity_range[0]} - {optimal_humidity_range[1]}%",
-                    'priority': 'medium'
-                })
-            
-            # Light adjustment
-            if current_light > optimal_light_max:
-                adjustments.append({
-                    'parameter': 'light_intensity',
-                    'current': current_light,
-                    'optimal_max': optimal_light_max,
-                    'adjustment': f"Reduce to below {optimal_light_max} lux",
-                    'priority': 'low'
-                })
-            
-            # CO2 adjustment
-            if current_co2 > optimal_co2_max:
-                adjustments.append({
-                    'parameter': 'co2_level',
-                    'current': current_co2,
-                    'optimal_max': optimal_co2_max,
-                    'adjustment': f"Improve ventilation to reduce below {optimal_co2_max} ppm",
-                    'priority': 'medium'
-                })
-            
-            # Predict quality with optimized conditions
-            optimized_temp = min(max(current_temp, optimal_temp_range[0]), optimal_temp_range[1])
-            optimized_humidity = min(max(current_humidity, optimal_humidity_range[0]), optimal_humidity_range[1])
-            optimized_light = min(current_light, optimal_light_max)
-            optimized_co2 = min(current_co2, optimal_co2_max)
-            
-            current_prediction = self.predict_fruit_quality(
-                fruit_type, current_temp, current_humidity, current_light, current_co2
-            )
-            
-            optimized_prediction = self.predict_fruit_quality(
-                fruit_type, optimized_temp, optimized_humidity, optimized_light, optimized_co2
-            )
-            
-            # Calculate improvement
-            quality_scores = {'Fresh': 100, 'Good': 80, 'Fair': 60, 'Poor': 30, 'Rotten': 0}
-            current_score = quality_scores.get(
-                current_prediction.get('quality_prediction', {}).get('predicted_class', 'Unknown'), 
-                50
-            )
-            optimized_score = quality_scores.get(
-                optimized_prediction.get('quality_prediction', {}).get('predicted_class', 'Unknown'), 
-                50
-            )
-            
-            improvement = optimized_score - current_score
-            
-            return {
-                'success': True,
-                'fruit_type': fruit_type,
-                'current_conditions': current_conditions,
-                'optimal_ranges': {
-                    'temperature': optimal_temp_range,
-                    'humidity': optimal_humidity_range,
-                    'light_intensity': optimal_light_max,
-                    'co2_level': optimal_co2_max
-                },
-                'adjustments_needed': adjustments,
-                'current_prediction': current_prediction,
-                'optimized_prediction': optimized_prediction,
-                'quality_improvement': improvement,
-                'estimated_shelf_life_improvement': self._estimate_shelf_life_improvement(improvement),
-                'recommendations': self._generate_optimization_recommendations(adjustments, improvement)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error optimizing storage conditions: {e}")
-            return {'error': str(e)}
-    
-    def _estimate_shelf_life_improvement(self, quality_improvement):
-        """Estimate shelf life improvement based on quality improvement"""
-        # Simple linear relationship: 10 quality points ≈ 1 day shelf life
-        return max(0, quality_improvement / 10)
-    
-    def _generate_optimization_recommendations(self, adjustments, improvement):
-        """Generate recommendations based on optimization results"""
-        recommendations = []
+                            logger.warning(f"❌ Failed to load model data into predictor for {model_record.name}")
+                    else:
+                        logger.warning(f"❌ No suitable predictor class found or `load_model` method missing for model type: {model_record.model_type}")
+                else:
+                    logger.warning(f"❌ Model file not found for {model_record.name}: {model_path}")
+            except Exception as e:
+                logger.error(f"❌ Error loading model {model_record.name} ({model_record.model_type}): {e}")
         
-        if not adjustments:
-            recommendations.append("Current conditions are optimal. Maintain current settings.")
-        else:
-            # Priority-based recommendations
-            high_priority = [a for a in adjustments if a['priority'] == 'high']
-            medium_priority = [a for a in adjustments if a['priority'] == 'medium']
-            low_priority = [a for a in adjustments if a['priority'] == 'low']
-            
-            if high_priority:
-                recommendations.append("High priority adjustments needed:")
-                for adj in high_priority:
-                    recommendations.append(f"- {adj['parameter']}: {adj['adjustment']}")
-            
-            if medium_priority:
-                recommendations.append("Medium priority adjustments:")
-                for adj in medium_priority:
-                    recommendations.append(f"- {adj['parameter']}: {adj['adjustment']}")
-            
-            if low_priority:
-                recommendations.append("Low priority adjustments (if possible):")
-                for adj in low_priority:
-                    recommendations.append(f"- {adj['parameter']}: {adj['adjustment']}")
+        # Fallback for core predictors if not explicitly loaded as TrainedModels
+        # This ensures basic functionality even if no TrainedModels are configured for them
+        if 'fruit_quality' not in self.loaded_predictors:
+            self.loaded_predictors['fruit_quality'] = self.quality_predictor # Retain existing quality_predictor instance
+        if 'ripeness' not in self.loaded_predictors:
+            self.loaded_predictors['ripeness'] = self.ripeness_predictor
+        if 'disease' not in self.loaded_predictors:
+            self.loaded_predictors['disease'] = self.disease_predictor
+        if 'price' not in self.loaded_predictors:
+            self.loaded_predictors['price'] = self.price_predictor
+        if 'ethylene' not in self.loaded_predictors:
+            self.loaded_predictors['ethylene'] = self.ethylene_monitor
+        if 'shelf_life' not in self.loaded_predictors: # Added
+            self.loaded_predictors['shelf_life'] = self.shelf_life_predictor # Added
         
-        if improvement > 20:
-            recommendations.append(f"Significant quality improvement ({improvement} points) possible with adjustments.")
-        elif improvement > 10:
-            recommendations.append(f"Moderate quality improvement ({improvement} points) possible.")
-        elif improvement > 0:
-            recommendations.append(f"Minor quality improvement ({improvement} points) possible.")
-        else:
-            recommendations.append("No quality improvement expected with current adjustments.")
-        
-        return recommendations
-    
-    def generate_quality_report(self, batch_id, start_date=None, end_date=None):
-        """Generate comprehensive quality report for a batch"""
-        try:
-            from bika.models import FruitBatch, FruitQualityReading
-            
-            batch = FruitBatch.objects.get(id=batch_id)
-            
-            # Set date range
-            if not start_date:
-                start_date = timezone.now() - timedelta(days=7)
-            if not end_date:
-                end_date = timezone.now()
-            
-            # Get readings
-            readings = FruitQualityReading.objects.filter(
-                fruit_batch=batch,
-                timestamp__range=[start_date, end_date]
-            ).order_by('timestamp')
-            
-            if not readings.exists():
-                return {'error': 'No quality readings found in the specified period'}
-            
-            # Convert to DataFrame
-            data = []
-            for reading in readings:
-                data.append({
-                    'timestamp': reading.timestamp,
-                    'temperature': float(reading.temperature),
-                    'humidity': float(reading.humidity),
-                    'light_intensity': float(reading.light_intensity),
-                    'co2_level': reading.co2_level,
-                    'predicted_class': reading.predicted_class,
-                    'confidence': float(reading.confidence_score),
-                    'actual_class': reading.actual_class if reading.actual_class else None
-                })
-            
-            df = pd.DataFrame(data)
-            
-            # Calculate statistics
-            stats = {
-                'total_readings': len(df),
-                'period': f"{start_date.date()} to {end_date.date()}",
-                'temperature_stats': {
-                    'mean': float(df['temperature'].mean()),
-                    'std': float(df['temperature'].std()),
-                    'min': float(df['temperature'].min()),
-                    'max': float(df['temperature'].max()),
-                    'stability': 'Stable' if df['temperature'].std() < 2 else 'Unstable'
-                },
-                'humidity_stats': {
-                    'mean': float(df['humidity'].mean()),
-                    'std': float(df['humidity'].std()),
-                    'min': float(df['humidity'].min()),
-                    'max': float(df['humidity'].max()),
-                    'stability': 'Stable' if df['humidity'].std() < 5 else 'Unstable'
-                },
-                'quality_distribution': df['predicted_class'].value_counts().to_dict(),
-                'average_confidence': float(df['confidence'].mean()),
-                'quality_trend': self._calculate_quality_trend(df),
-                'anomalies': self._detect_anomalies(df)
-            }
-            
-            # Model accuracy (if actual classes are available)
-            if df['actual_class'].notna().any():
-                actuals = df['actual_class'].dropna()
-                predictions = df.loc[actuals.index, 'predicted_class']
-                accuracy = (actuals == predictions).sum() / len(actuals)
-                stats['model_accuracy'] = float(accuracy)
-                stats['misclassified'] = (actuals != predictions).sum()
-            
-            # Generate insights
-            insights = self._generate_quality_insights(df, batch)
-            
-            # Recommendations
-            recommendations = self._generate_report_recommendations(stats, insights, batch)
-            
-            # Export data (for download)
-            export_data = {
-                'batch_info': {
-                    'batch_number': batch.batch_number,
-                    'fruit_type': batch.fruit_type.name,
-                    'quantity': batch.quantity,
-                    'arrival_date': batch.arrival_date.isoformat(),
-                    'expected_expiry': batch.expected_expiry.isoformat() if batch.expected_expiry else None,
-                    'days_remaining': batch.days_remaining
-                },
-                'report_period': stats['period'],
-                'statistics': stats,
-                'insights': insights,
-                'recommendations': recommendations,
-                'raw_data_summary': data[-10:] if len(data) > 10 else data,  # Last 10 readings
-                'generated_at': timezone.now().isoformat()
-            }
-            
-            return export_data
-            
-        except Exception as e:
-            logger.error(f"Error generating quality report: {e}")
-            return {'error': str(e)}
-    
-    def _calculate_quality_trend(self, df):
-        """Calculate quality trend over time"""
-        if len(df) < 2:
-            return 'insufficient_data'
-        
-        quality_scores = {'Fresh': 5, 'Good': 4, 'Fair': 3, 'Poor': 2, 'Rotten': 1}
-        df['quality_score'] = df['predicted_class'].map(quality_scores)
-        
-        # Simple linear trend
-        x = np.arange(len(df))
-        y = df['quality_score'].values
-        slope = np.polyfit(x, y, 1)[0]
-        
-        if slope > 0.1:
-            return 'improving'
-        elif slope < -0.1:
-            return 'deteriorating'
-        else:
-            return 'stable'
-    
-    def _detect_anomalies(self, df):
-        """Detect anomalies in sensor readings"""
-        anomalies = []
-        
-        # Temperature anomalies
-        temp_std = df['temperature'].std()
-        temp_mean = df['temperature'].mean()
-        temp_anomalies = df[np.abs(df['temperature'] - temp_mean) > 2 * temp_std]
-        
-        if len(temp_anomalies) > 0:
-            anomalies.append({
-                'type': 'temperature_anomaly',
-                'count': len(temp_anomalies),
-                'description': f"Temperature spikes/drops detected ({len(temp_anomalies)} occurrences)"
-            })
-        
-        # Sudden quality drops
-        if len(df) >= 3:
-            quality_scores = {'Fresh': 5, 'Good': 4, 'Fair': 3, 'Poor': 2, 'Rotten': 1}
-            df['quality_score'] = df['predicted_class'].map(quality_scores)
-            
-            for i in range(1, len(df)):
-                if df.iloc[i]['quality_score'] < df.iloc[i-1]['quality_score'] - 1:
-                    anomalies.append({
-                        'type': 'quality_drop',
-                        'timestamp': df.iloc[i]['timestamp'].isoformat(),
-                        'from': df.iloc[i-1]['predicted_class'],
-                        'to': df.iloc[i]['predicted_class'],
-                        'description': f"Sudden quality drop from {df.iloc[i-1]['predicted_class']} to {df.iloc[i]['predicted_class']}"
-                    })
-        
-        return anomalies
-    
-    def _generate_quality_insights(self, df, batch):
-        """Generate insights from quality data"""
-        insights = []
-        
-        # Temperature insights
-        temp_mean = df['temperature'].mean()
-        if temp_mean < 2:
-            insights.append("Temperature consistently too low - risk of chilling injury")
-        elif temp_mean > 12:
-            insights.append("Temperature consistently too high - accelerated spoilage likely")
-        
-        # Humidity insights
-        humidity_mean = df['humidity'].mean()
-        if humidity_mean < 85:
-            insights.append("Low humidity detected - dehydration risk")
-        elif humidity_mean > 95:
-            insights.append("High humidity detected - mold growth risk")
-        
-        # Quality trend insights
-        quality_trend = self._calculate_quality_trend(df)
-        if quality_trend == 'deteriorating':
-            insights.append("Quality is deteriorating over time - consider priority handling")
-        elif quality_trend == 'improving':
-            insights.append("Quality is improving - storage conditions may be optimal")
-        
-        # Confidence insights
-        avg_confidence = df['confidence'].mean()
-        if avg_confidence < 0.6:
-            insights.append("Low prediction confidence - model may need retraining")
-        
-        # Batch-specific insights
-        if batch.days_remaining <= 2:
-            insights.append("Batch approaching expiry - immediate action required")
-        elif batch.days_remaining <= 5:
-            insights.append("Batch nearing expiry - plan for sale or processing")
-        
-        return insights
-    
-    def _generate_report_recommendations(self, stats, insights, batch):
-        """Generate recommendations from report data"""
-        recommendations = []
-        
-        # Based on statistics
-        if stats['temperature_stats']['stability'] == 'Unstable':
-            recommendations.append("Stabilize temperature control system")
-        
-        if stats['humidity_stats']['stability'] == 'Unstable':
-            recommendations.append("Improve humidity control for consistency")
-        
-        # Based on insights
-        for insight in insights:
-            if 'too low' in insight.lower() or 'too high' in insight.lower():
-                recommendations.append(f"Adjust {insight.split()[0].lower()} to optimal range")
-            elif 'deteriorating' in insight.lower():
-                recommendations.append("Implement accelerated sales strategy")
-            elif 'approaching expiry' in insight.lower():
-                recommendations.append("Schedule immediate processing or discount sale")
-        
-        # General recommendations
-        if 'Rotten' in stats['quality_distribution'] and stats['quality_distribution']['Rotten'] > 0:
-            recommendations.append("Remove rotten fruits to prevent contamination")
-        
-        if stats['average_confidence'] < 0.7:
-            recommendations.append("Consider retraining AI model with updated data")
-        
-        # Storage optimization
-        recommendations.append("Regularly monitor and log storage conditions")
-        recommendations.append("Implement first-in-first-out (FIFO) inventory management")
-        
-        return recommendations
-    
-    def predict_sales_demand(self, fruit_type, historical_data, market_factors=None):
-        """Predict sales demand for a fruit type"""
-        try:
-            # Convert historical data to DataFrame
-            df = pd.DataFrame(historical_data)
-            
-            if len(df) < 10:
-                return {'error': 'Insufficient historical data for prediction'}
-            
-            # Ensure required columns
-            required_cols = ['date', 'quantity_sold']
-            missing_cols = [col for col in required_cols if col not in df.columns]
-            
-            if missing_cols:
-                return {'error': f'Missing required columns: {missing_cols}'}
-            
-            # Convert date column
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date')
-            
-            # Add time features
-            df['day_of_week'] = df['date'].dt.dayofweek
-            df['month'] = df['date'].dt.month
-            df['week_of_year'] = df['date'].dt.isocalendar().week
-            
-            # Simple moving average prediction
-            window = min(7, len(df))
-            last_values = df['quantity_sold'].tail(window).values
-            
-            # Predict next 7 days
-            predictions = []
-            for i in range(7):
-                predicted = np.mean(last_values[-window:]) if len(last_values) >= window else np.mean(last_values)
-                predictions.append(predicted)
-                last_values = np.append(last_values, predicted)
-            
-            # Adjust for market factors
-            if market_factors:
-                seasonality = market_factors.get('seasonality', 1.0)
-                demand_factor = market_factors.get('demand', 1.0)
-                holiday_factor = market_factors.get('holiday', 1.0)
-                
-                predictions = [p * seasonality * demand_factor * holiday_factor for p in predictions]
-            
-            # Calculate statistics
-            avg_prediction = np.mean(predictions)
-            total_prediction = np.sum(predictions)
-            
-            # Generate recommendations
-            recommendations = []
-            if avg_prediction > df['quantity_sold'].mean() * 1.5:
-                recommendations.append("High demand predicted - increase stock levels")
-            elif avg_prediction < df['quantity_sold'].mean() * 0.5:
-                recommendations.append("Low demand predicted - reduce stock levels")
-            
-            # Identify peak days
-            day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-            peak_day_idx = np.argmax(predictions)
-            peak_day = day_names[peak_day_idx]
-            
-            return {
-                'success': True,
-                'fruit_type': fruit_type,
-                'predictions': {
-                    'next_7_days': [float(p) for p in predictions],
-                    'average_daily': float(avg_prediction),
-                    'total_weekly': float(total_prediction),
-                    'peak_day': peak_day,
-                    'peak_quantity': float(predictions[peak_day_idx])
-                },
-                'statistics': {
-                    'historical_avg': float(df['quantity_sold'].mean()),
-                    'historical_std': float(df['quantity_sold'].std()),
-                    'data_points': len(df),
-                    'time_period': f"{df['date'].min().date()} to {df['date'].max().date()}"
-                },
-                'recommendations': recommendations,
-                'confidence': min(0.9, len(df) / 100)  # Confidence based on data size
-            }
-            
-        except Exception as e:
-            logger.error(f"Error predicting sales demand: {e}")
-            return {'error': str(e)}
-    
-    def create_prescription(self, batch_id, target_outcome='maintain_quality'):
-        """Create AI-powered prescription for fruit batch management"""
-        try:
-            from bika.models import FruitBatch
-            
-            batch = FruitBatch.objects.get(id=batch_id)
-            
-            # Analyze current state
-            analysis = self.analyze_batch_trends(batch_id, days=3)
-            
-            if 'error' in analysis:
-                return {'error': analysis['error']}
-            
-            # Generate prescription based on target outcome
-            prescription = {
-                'batch_info': {
-                    'batch_number': batch.batch_number,
-                    'fruit_type': batch.fruit_type.name,
-                    'current_quality': analysis['statistics']['current_quality'],
-                    'days_remaining': batch.days_remaining
-                },
-                'target_outcome': target_outcome,
-                'current_analysis': analysis,
-                'prescription_steps': [],
-                'expected_results': {},
-                'monitoring_plan': []
-            }
-            
-            # Define prescription steps based on target outcome
-            if target_outcome == 'maintain_quality':
-                prescription['prescription_steps'] = [
-                    "Maintain temperature at 4-8°C",
-                    "Keep humidity at 85-95%",
-                    "Minimize light exposure",
-                    "Ensure proper ventilation",
-                    "Monitor daily for quality changes"
-                ]
-                
-                prescription['expected_results'] = {
-                    'quality_maintenance': 'Stable or improved quality',
-                    'shelf_life_extension': 'Up to 20% longer shelf life',
-                    'waste_reduction': 'Up to 30% less waste'
-                }
-            
-            elif target_outcome == 'accelerate_ripening':
-                prescription['prescription_steps'] = [
-                    "Increase temperature to 18-22°C",
-                    "Introduce ethylene gas (controlled)",
-                    "Store with ripe bananas or apples",
-                    "Monitor every 12 hours",
-                    "Harvest when desired ripeness achieved"
-                ]
-                
-                prescription['expected_results'] = {
-                    'ripening_time': '2-3 days faster ripening',
-                    'uniformity': 'More uniform ripening',
-                    'quality': 'Maintained fruit quality'
-                }
-            
-            elif target_outcome == 'extend_shelf_life':
-                prescription['prescription_steps'] = [
-                    "Reduce temperature to 2-4°C",
-                    "Maintain humidity at 90-95%",
-                    "Use ethylene absorbers",
-                    "Implement controlled atmosphere (5% O2, 5% CO2)",
-                    "Minimize handling and vibration"
-                ]
-                
-                prescription['expected_results'] = {
-                    'shelf_life_extension': 'Up to 50% longer shelf life',
-                    'quality_preservation': 'Maintained freshness',
-                    'economic_benefit': 'Reduced losses, higher profits'
-                }
-            
-            # Monitoring plan
-            prescription['monitoring_plan'] = [
-                "Check temperature every 6 hours",
-                "Monitor humidity daily",
-                "Record quality observations daily",
-                "Take photos for visual documentation",
-                "Update prescription based on results"
-            ]
-            
-            # Success metrics
-            prescription['success_metrics'] = {
-                'quality_score': 'Maintain or improve by 10%',
-                'shelf_life': 'Extend by target amount',
-                'economic_value': 'Maximize ROI',
-                'customer_satisfaction': 'Meet quality expectations'
-            }
-            
-            return prescription
-            
-        except Exception as e:
-            logger.error(f"Error creating prescription: {e}")
-            return {'error': str(e)}
+        logger.info(f"Loaded predictors: {list(self.loaded_predictors.keys())}")
 
 
-# ==================== SERVICE FACTORY ====================
-
-class AIServiceFactory:
-    """Factory for creating AI service instances"""
-    
-    @staticmethod
-    def create_service(service_type='enhanced'):
-        """Create AI service instance based on type"""
-        if service_type == 'enhanced':
-            return EnhancedBikaAIService()
-        elif service_type == 'basic':
-            return BikaAIService()
-        else:
-            raise ValueError(f"Unknown service type: {service_type}")
-    
-    @staticmethod
-    def get_available_services():
-        """Get list of available AI services"""
+    def _get_latest_sensor_data(self, product: Product) -> Dict[str, float]:
+        """
+        Get latest sensor readings for a product.
+        Prioritizes sensor data from the product's associated storage location,
+        then falls back to product's own fields, or defaults.
+        """
+        # Try to get from product's storage location
+        # Assuming Product has a ForeignKey to StorageLocation or can derive it
+        # For InventoryItem, the location is directly linked.
+        # For a general Product, we might need a more complex lookup,
+        # but for now, we'll assume a direct link or a way to find relevant sensors.
+        storage_location = getattr(product, 'storage_location', None) # Assuming a field like this or similar lookup
+        
+        if storage_location:
+            # Import RealTimeSensorData dynamically to avoid circular dependencies if it's in bika.models
+            from bika.models import RealTimeSensorData
+            readings = RealTimeSensorData.objects.filter(
+                location=storage_location,
+                recorded_at__gte=timezone.now() - timedelta(hours=24)
+            ).order_by('-recorded_at')
+            
+            # Aggregate sensor data for the location
+            sensor_data = {
+                'temperature': 22.0, 'humidity': 85.0, 'light_intensity': 50.0, 'co2_level': 400.0, 'ethylene_level': 0.0
+            }
+            if readings.exists():
+                for reading in readings:
+                    if reading.sensor_type == 'temperature':
+                        sensor_data['temperature'] = float(reading.value)
+                    elif reading.sensor_type == 'humidity':
+                        sensor_data['humidity'] = float(reading.value)
+                    elif reading.sensor_type == 'light': # Assuming 'light' for light_intensity
+                        sensor_data['light_intensity'] = float(reading.value)
+                    elif reading.sensor_type == 'co2':
+                        sensor_data['co2_level'] = float(reading.value)
+                    elif reading.sensor_type == 'ethylene':
+                        sensor_data['ethylene_level'] = float(reading.value)
+                return sensor_data
+        
+        # Fallback to product's own sensor data or defaults
+        # Assuming Product model has fields like current_temperature, etc.
+        # If not, these would need to be added or derived differently.
         return {
-            'enhanced': 'Enhanced AI Service (recommended)',
-            'basic': 'Basic AI Service (lightweight)'
+            'temperature': getattr(product, 'current_temperature', 22.0),
+            'humidity': getattr(product, 'current_humidity', 85.0),
+            'light_intensity': getattr(product, 'light_exposure', 50.0),
+            'co2_level': getattr(product, 'co2_level', 400.0),
+            'ethylene_level': getattr(product, 'ethylene_level', 0.0)
         }
 
+    def _generate_quality_alerts(self, prediction_result: Dict[str, Any], product: Product, batch: Optional[FruitBatch] = None) -> List[Dict[str, Any]]:
+        """Generate alerts based on quality prediction."""
+        alerts = []
+        
+        if not prediction_result:
+            return alerts
+        
+        predicted_class = prediction_result['predicted_class']
+        confidence = prediction_result['confidence']
+        input_conditions = prediction_result['input_conditions'] # Contains temperature, humidity, etc.
 
-# ==================== GLOBAL INSTANCES ====================
+        # Quality-based alerts
+        quality_map = {
+            'Rotten': {'priority': 'critical', 'message_suffix': 'This product requires immediate disposal or processing.'},
+            'Poor': {'priority': 'high', 'message_suffix': 'Consider priority sale or processing at a discount.'},
+            'Fair': {'priority': 'medium', 'message_suffix': 'Monitor closely and consider adjusted pricing.'},
+        }
 
-# Create global AI service instances
-basic_ai_service = BikaAIService()
-enhanced_ai_service = EnhancedBikaAIService()
-ai_service_factory = AIServiceFactory()
+        if predicted_class in quality_map:
+            info = quality_map[predicted_class]
+            alerts.append({
+                'type': 'quality_drop',
+                'priority': info['priority'],
+                'title': f'{product.name} Quality Alert: {predicted_class.upper()}',
+                'message': f'Product "{product.name}" is predicted as {predicted_class} quality with {confidence:.0%} confidence. {info["message_suffix"]}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result, # Store full prediction data
+            })
 
-# Default service (can be configured in settings)
-DEFAULT_AI_SERVICE_TYPE = getattr(settings, 'BIKA_AI_SERVICE_TYPE', 'enhanced')
+        # Environmental condition alerts (examples, can be expanded)
+        if input_conditions.get('temperature') is not None and (input_conditions['temperature'] < 2 or input_conditions['temperature'] > 12):
+            priority = 'critical' if input_conditions['temperature'] < 0 or input_conditions['temperature'] > 20 else 'high'
+            alerts.append({
+                'type': 'temperature_issue',
+                'priority': priority,
+                'title': f'High Temperature Anomaly for {product.name}',
+                'message': f'Current temperature is {input_conditions["temperature"]}°C, which is outside optimal range. This could severely impact quality.',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        
+        if input_conditions.get('humidity') is not None and (input_conditions['humidity'] < 70 or input_conditions['humidity'] > 95):
+            priority = 'high' if input_conditions['humidity'] < 60 or input_conditions['humidity'] > 98 else 'medium'
+            alerts.append({
+                'type': 'humidity_issue',
+                'priority': priority,
+                'title': f'Humidity Anomaly for {product.name}',
+                'message': f'Current humidity is {input_conditions["humidity"]}%, which is outside optimal range. Risk of dehydration or mold.',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
 
-if DEFAULT_AI_SERVICE_TYPE == 'enhanced':
-    ai_service = enhanced_ai_service
-else:
-    ai_service = basic_ai_service
+        return alerts
+    
+    def _generate_disease_alerts(self, prediction_result: Dict[str, Any], product: Product, batch: Optional[FruitBatch] = None) -> List[Dict[str, Any]]:
+        """Generate disease risk alerts based on disease prediction."""
+        alerts = []
+        if not prediction_result:
+            return alerts
 
-# Export
-__all__ = [
-    'BikaAIService',
-    'EnhancedBikaAIService',
-    'AIServiceFactory',
-    'basic_ai_service',
-    'enhanced_ai_service',
-    'ai_service_factory',
-    'ai_service'
-]
+        risk_level = prediction_result.get('risk_level', 'Unknown').lower()
+        
+        if risk_level in ['high', 'critical']:
+            alerts.append({
+                'type': 'disease_risk',
+                'priority': risk_level,
+                'title': f'Disease Risk Alert for {product.name}: {risk_level.title()}',
+                'message': f'Product "{product.name}" is at {risk_level} risk of disease. Recommendations: {", ".join(prediction_result.get("recommendations", []))}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        return alerts
+
+    def _generate_shelf_life_alerts(self, prediction_result: Dict[str, Any], product: Product, batch: Optional[FruitBatch] = None) -> List[Dict[str, Any]]:
+        """Generate alerts based on shelf life prediction."""
+        alerts = []
+        if not prediction_result:
+            return alerts
+
+        status = prediction_result.get('status', 'Optimal').lower()
+        predicted_days = prediction_result.get('predicted_days_remaining', 999)
+        recommendations = prediction_result.get('recommendations', [])
+
+        if status == 'critical':
+            alerts.append({
+                'type': 'shelf_life_critical',
+                'priority': 'critical',
+                'title': f'CRITICAL Shelf Life Alert for {product.name} ({predicted_days} days left)',
+                'message': f'Product "{product.name}" has only {predicted_days} days of shelf life remaining. Immediate action required. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        elif status == 'warning':
+            alerts.append({
+                'type': 'shelf_life_warning',
+                'priority': 'high',
+                'title': f'WARNING Shelf Life Alert for {product.name} ({predicted_days} days left)',
+                'message': f'Product "{product.name}" has {predicted_days} days of shelf life remaining. Plan for quick turnover. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        
+        # Also add environmental alerts if any from the shelf-life prediction's recommendations
+        for rec in recommendations:
+            if "Temperature is below optimal" in rec or "Temperature is above optimal" in rec:
+                alerts.append({
+                    'type': 'environmental_shelf_life_temp',
+                    'priority': 'medium',
+                    'title': f'Environmental Alert (Shelf Life) for {product.name}',
+                    'message': rec,
+                    'product': product,
+                    'batch': batch,
+                    'prediction_data': prediction_result,
+                })
+            elif "Humidity is low" in rec or "Humidity is high" in rec:
+                alerts.append({
+                    'type': 'environmental_shelf_life_hum',
+                    'priority': 'medium',
+                    'title': f'Environmental Alert (Shelf Life) for {product.name}',
+                    'message': rec,
+                    'product': product,
+                    'batch': batch,
+                    'prediction_data': prediction_result,
+                })
+            elif "Ethylene levels are elevated" in rec:
+                alerts.append({
+                    'type': 'environmental_shelf_life_ethylene',
+                    'priority': 'high',
+                    'title': f'Ethylene Alert (Shelf Life) for {product.name}',
+                    'message': rec,
+                    'product': product,
+                    'batch': batch,
+                    'prediction_data': prediction_result,
+                })
+
+        return alerts
+
+    def _generate_ethylene_alerts(self, prediction_result: Dict[str, Any], product: Product, batch: Optional[FruitBatch] = None) -> List[Dict[str, Any]]:
+        """Generate alerts based on ethylene risk prediction."""
+        alerts = []
+        if not prediction_result:
+            return alerts
+
+        risk_level = prediction_result.get('risk_level', 'Low').lower()
+        concentration = prediction_result.get('ethylene_concentration_ppm', 0.0)
+        recommendations = prediction_result.get('recommendations', [])
+
+        if risk_level == 'critical':
+            alerts.append({
+                'type': 'ethylene_critical',
+                'priority': 'critical',
+                'title': f'CRITICAL Ethylene Alert for {product.name} ({concentration:.2f} ppm)',
+                'message': f'Ethylene concentration for "{product.name}" is critical ({concentration:.2f} ppm). Immediate action required. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        elif risk_level == 'high':
+            alerts.append({
+                'type': 'ethylene_high_risk',
+                'priority': 'high',
+                'title': f'HIGH Risk Ethylene Alert for {product.name} ({concentration:.2f} ppm)',
+                'message': f'Ethylene concentration for "{product.name}" is high ({concentration:.2f} ppm). Increase ventilation. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        elif risk_level == 'medium':
+            alerts.append({
+                'type': 'ethylene_medium_risk',
+                'priority': 'medium',
+                'title': f'MEDIUM Risk Ethylene Alert for {product.name} ({concentration:.2f} ppm)',
+                'message': f'Ethylene concentration for "{product.name}" is elevated ({concentration:.2f} ppm). Monitor closely. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        
+        # Add compatibility alerts if any
+        compatibility_check_message = next((rec for rec in recommendations if "incompatible with" in rec), None)
+        if compatibility_check_message:
+             alerts.append({
+                'type': 'ethylene_compatibility_issue',
+                'priority': 'medium',
+                'title': f'Ethylene Compatibility Warning for {product.name}',
+                'message': compatibility_check_message,
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+
+        return alerts
+
+    def _generate_ripeness_alerts(self, prediction_result: Dict[str, Any], product: Product, batch: Optional[FruitBatch] = None) -> List[Dict[str, Any]]:
+        """Generate alerts based on ripeness prediction."""
+        alerts = []
+        if not prediction_result:
+            return alerts
+
+        ripeness_stage = prediction_result.get('ripeness_stage', 'Unknown').lower()
+        estimated_days_to_overripe = prediction_result.get('estimated_days_to_overripe', 999)
+        recommendations = prediction_result.get('recommendations', [])
+
+        if ripeness_stage == 'overripe':
+            alerts.append({
+                'type': 'ripeness_overripe_critical',
+                'priority': 'critical',
+                'title': f'CRITICAL Ripeness Alert for {product.name}: Overripe',
+                'message': f'Product "{product.name}" is predicted to be overripe. Estimated days to overripe: {estimated_days_to_overripe}. Immediate processing or disposal recommended. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        elif estimated_days_to_overripe <= 2 and ripeness_stage != 'overripe':
+            alerts.append({
+                'type': 'ripeness_overripe_warning',
+                'priority': 'high',
+                'title': f'WARNING Ripeness Alert for {product.name}: Nearing Overripe',
+                'message': f'Product "{product.name}" is {ripeness_stage}, but is nearing overripe stage ({estimated_days_to_overripe} days left). Prioritize for sale. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+        elif ripeness_stage == 'unripe' and estimated_days_to_overripe < 5: # If unripe but spoilage is fast
+             alerts.append({
+                'type': 'ripeness_unripe_warning',
+                'priority': 'medium',
+                'title': f'Ripeness Alert for {product.name}: Unripe but Short Window',
+                'message': f'Product "{product.name}" is unripe, but has limited time before overripening ({estimated_days_to_overripe} days). Monitor closely. Recommendations: {", ".join(recommendations)}',
+                'product': product,
+                'batch': batch,
+                'prediction_data': prediction_result,
+            })
+
+        return alerts
+
+    def _save_prediction(self, prediction_data: Dict[str, Any], product: Product, batch: Optional[FruitBatch] = None) -> Optional[FruitPrediction]:
+        """Save prediction to database."""
+        if not prediction_data:
+            return None
+        
+        try:
+            with transaction.atomic():
+                prediction = FruitPrediction(
+                    product=product,
+                    batch=batch,
+                    prediction_type=prediction_data['type'],
+                    predicted_value=str(prediction_data['predicted_value']),
+                    confidence=prediction_data.get('confidence', 0.0),
+                    predicted_score=prediction_data.get('score'),
+                    
+                    # Sensor data
+                    temperature=prediction_data.get('input_conditions', {}).get('temperature'),
+                    humidity=prediction_data.get('input_conditions', {}).get('humidity'),
+                    light_intensity=prediction_data.get('input_conditions', {}).get('light_intensity'),
+                    co2_level=prediction_data.get('input_conditions', {}).get('co2_level'),
+                    ethylene_level=prediction_data.get('input_conditions', {}).get('ethylene_level'),
+                    
+                    # Alert info (determine based on prediction)
+                    alert_level=self._determine_alert_level(prediction_data),
+                    alert_message=self._generate_alert_message(prediction_data),
+                    recommendations=self._generate_recommendations_for_saving(prediction_data), # Use the unified recommendations method
+                    
+                    model_used=self._get_model_record_from_type(prediction_data['type']) # Link to the TrainedModel record
+                )
+                prediction.save()
+                return prediction
+                
+        except Exception as e:
+            logger.error(f"Error saving prediction for product {product.id}: {e}")
+            return None
+
+    def _determine_alert_level(self, prediction_data: Dict[str, Any]) -> str:
+        """Determine alert level based on prediction data."""
+        pred_type = prediction_data['type']
+        pred_value = str(prediction_data['predicted_value']).lower()
+        score = prediction_data.get('score', 0)
+        confidence = prediction_data.get('confidence', 0)
+        
+        # Consider confidence in alert level determination
+        if confidence < 0.5: # Low confidence might warrant a lower priority alert
+            return 'info'
+
+        if pred_type == 'quality':
+            if pred_value in ['rotten', 'bad']:
+                return 'critical'
+            elif pred_value in ['poor']: # Changed 'fair' to 'poor' for higher priority
+                return 'warning'
+            elif pred_value == 'fair':
+                return 'info' # Fair quality is just informational
+
+        elif pred_type == 'disease':
+            if score > 0.7:
+                return 'critical'
+            elif score > 0.4:
+                return 'warning'
+
+        elif pred_type == 'shelf_life':
+            # Directly use score which is predicted_days_remaining
+            days = prediction_data.get('predicted_days_remaining')
+            if days is not None:
+                if days <= 2:
+                    return 'critical'
+                elif days <= 5:
+                    return 'warning'
+            # Default to info if days are higher or not available
+            return 'info'
+
+        elif pred_type == 'ethylene':
+            risk_level = prediction_data.get('risk_level', 'low').lower()
+            if risk_level == 'critical':
+                return 'critical'
+            elif risk_level == 'high':
+                return 'high'
+            elif risk_level == 'medium':
+                return 'warning'
+            return 'info'
+
+        elif pred_type == 'ripeness': # Added
+            ripeness_stage = prediction_data.get('ripeness_stage', 'unknown').lower()
+            estimated_days_to_overripe = prediction_data.get('estimated_days_to_overripe', 999)
+            
+            if ripeness_stage == 'overripe' or estimated_days_to_overripe <= 1:
+                return 'critical'
+            elif ripeness_stage == 'fully_ripe' or estimated_days_to_overripe <= 3:
+                return 'warning'
+            return 'info'
+    def _generate_alert_message(self, prediction_data: Dict[str, Any]) -> str:
+        """Generate a concise alert message from prediction data."""
+        pred_type = prediction_data['type']
+        pred_value = prediction_data['predicted_value']
+        confidence = prediction_data.get('confidence', 0.0)
+        product_name = prediction_data.get('product', Product()).name if prediction_data.get('product') else 'Unknown Product'
+
+        messages = {
+            'quality': f'Quality of {product_name} predicted as {pred_value} ({confidence:.0%} confidence).',
+            'ripeness': f'Ripeness of {product_name} is {pred_value}.',
+            'disease': f'High disease risk detected for {product_name}: {pred_value} ({confidence:.0%} confidence).',
+            'shelf_life': f'{product_name} has {pred_value} remaining shelf life.',
+            'price': f'Price recommendation for {product_name}: {pred_value}.',
+            'ethylene': f'Ethylene risk for {product_name}: {prediction_data.get("risk_level", "Unknown")} ({prediction_data.get("ethylene_concentration_ppm", 0.0):.2f} ppm).'
+        }
+        
+        message = messages.get(pred_type, f'AI Prediction for {product_name} ({pred_type}): {pred_value}.')
+        if pred_type == 'shelf_life' and prediction_data.get('status') == 'Critical':
+            message = f"CRITICAL: {message} Immediate action advised."
+        elif pred_type == 'shelf_life' and prediction_data.get('status') == 'Warning':
+            message = f"WARNING: {message} Plan for quick turnover."
+        elif pred_type == 'ethylene' and prediction_data.get('risk_level') == 'Critical':
+            message = f"CRITICAL: {message} Immediate ventilation required."
+        elif pred_type == 'ethylene' and prediction_data.get('risk_level') == 'High':
+            message = f"WARNING: {message} Increased ventilation recommended."
+        elif pred_type == 'ripeness' and prediction_data.get('ripeness_stage') == 'overripe': # Added
+            message = f"CRITICAL: {message} Product is overripe. Consider immediate processing or disposal."
+        elif pred_type == 'ripeness' and prediction_data.get('ripeness_stage') == 'fully_ripe': # Added
+            message = f"WARNING: {message} Product is fully ripe. Prioritize for sale."
+        return message
+
+    def _generate_recommendations_for_saving(self, prediction_data: Dict[str, Any]) -> List[str]:
+        """
+        Generates recommendations for saving to the FruitPrediction model.
+        This consolidates recommendations from various predictors.
+        """
+        all_recommendations = []
+        pred_type = prediction_data['type']
+        
+        # Prioritize recommendations from the AI models' own prediction results
+        if prediction_data.get('recommendations'):
+            all_recommendations.extend(prediction_data['recommendations'])
+        
+        # Add general recommendations based on prediction type and value
+        pred_value = str(prediction_data['predicted_value']).lower()
+        score = prediction_data.get('score', 0)
+
+        if pred_type == 'quality':
+            if pred_value in ['rotten', 'bad']:
+                all_recommendations.extend(['Immediate disposal', 'Isolate from other products', 'Document loss'])
+            elif pred_value == 'poor':
+                all_recommendations.extend(['Offer discount', 'Prioritize for quick sale', 'Process into other products'])
+            elif pred_value == 'fair':
+                all_recommendations.extend(['Monitor closely', 'Adjust storage conditions if possible'])
+        
+        elif pred_type == 'disease':
+            if score > 0.7:
+                all_recommendations.extend(['Quarantine affected products', 'Sanitize storage area', 'Consider treatment options'])
+        
+        elif pred_type == 'shelf_life':
+            # Use recommendations directly from the shelf_life_prediction_raw output
+            if prediction_data.get('recommendations'):
+                all_recommendations.extend(prediction_data['recommendations'])
+        elif pred_type == 'ethylene':
+            if prediction_data.get('recommendations'):
+                all_recommendations.extend(prediction_data['recommendations'])
+        elif pred_type == 'ripeness': # Added
+            if prediction_data.get('recommendations'):
+                all_recommendations.extend(prediction_data['recommendations'])
+            ripeness_stage = prediction_data.get('ripeness_stage', 'unknown').lower()
+            if ripeness_stage == 'overripe':
+                all_recommendations.append('Immediately process or dispose of product.')
+            elif ripeness_stage == 'fully_ripe':
+                all_recommendations.append('Prioritize product for immediate sale.')
+            elif ripeness_stage == 'unripe':
+                all_recommendations.append('Monitor ripening process closely. Adjust storage conditions to accelerate/decelerate ripening if needed.')
+
+        # Remove duplicates and return
+        return list(set(all_recommendations))
+
+    def _get_model_record_from_type(self, model_type: str) -> Optional[TrainedModel]:
+        """Retrieve the active TrainedModel record for a given model type."""
+        # Mapping from prediction_data type to TrainedModel.model_type
+        type_mapping = {
+            'quality': 'fruit_quality',
+            'ripeness': 'ripeness', # Assuming this is a model_type in TrainedModel
+            'disease': 'disease',   # Assuming this is a model_type in TrainedModel
+            'price': 'price',       # Assuming this is a model_type in TrainedModel
+            'shelf_life': 'shelf_life', # Added
+            'ethylene': 'ethylene' # Added
+        }
+        trained_model_type = type_mapping.get(model_type)
+        if trained_model_type:
+            return TrainedModel.objects.filter(model_type=trained_model_type, is_active=True).first()
+        return None
+
+    def _save_alert(self, alert_data: Dict[str, Any], related_prediction: Optional[FruitPrediction] = None) -> Optional[AlertNotification]:
+        """Save alert to database."""
+        if not alert_data:
+            return None
+        
+        try:
+            with transaction.atomic():
+                alert = AlertNotification(
+                    alert_type=alert_data['type'],
+                    priority=alert_data['priority'],
+                    title=alert_data.get('title', 'AI Generated Alert'),
+                    message=alert_data['message'],
+                    product=alert_data.get('product'),
+                    batch=alert_data.get('batch'),
+                    # warehouse=alert_data.get('warehouse'), # Assuming warehouse might be passed
+                    prediction=related_prediction
+                )
+                alert.save()
+                return alert
+                
+        except Exception as e:
+            logger.error(f"Error saving alert: {e}")
+            return None
+
+    def _send_alert_notifications(self, alerts: List[AlertNotification]):
+        """Send email notifications for critical alerts."""
+        critical_alerts = [a for a in alerts if a.priority in ['critical', 'high']]
+        
+        if not critical_alerts:
+            return
+        
+        try:
+            admin_users = CustomUser.objects.filter(is_staff=True, is_active=True)
+            admin_emails = [user.email for user in admin_users if user.email]
+            
+            if not admin_emails:
+                logger.warning("No admin emails found to send critical alerts.")
+                return
+            
+            subject = f"🚨 {len(critical_alerts)} Critical Fruit Quality Alerts"
+            
+            message_lines = ["CRITICAL ALERTS REQUIRING ATTENTION:\n"]
+            
+            for alert in critical_alerts:
+                message_lines.append(f"🔴 {alert.title}")
+                message_lines.append(f"   Product: {alert.product.name if alert.product else 'Unknown'}")
+                message_lines.append(f"   Priority: {alert.priority.upper()}")
+                message_lines.append(f"   Message: {alert.message}")
+                message_lines.append(f"   Time: {alert.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                message_lines.append("")
+            
+            message_lines.append("\nPlease log in to the system to take action.")
+            message = "\n".join(message_lines)
+            
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=admin_emails,
+                fail_silently=False # Set to False to log errors
+            )
+            
+            logger.info(f"📧 Sent {len(critical_alerts)} critical alerts to {len(admin_emails)} admins")
+            
+        except Exception as e:
+            logger.error(f"Error sending alert emails: {e}", exc_info=True)
+
+    def predict_product_insights(self, product_id: int, batch_id: Optional[int] = None,
+                                 sensor_data: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+        """
+        Orchestrates AI predictions for a given product, generating insights,
+        alerts, and saving results to the database.
+        """
+        try:
+            product = Product.objects.get(id=product_id)
+            batch = FruitBatch.objects.get(id=batch_id) if batch_id else None
+        except Product.DoesNotExist:
+            logger.error(f"Product with ID {product_id} not found.")
+            return {"error": f"Product with ID {product_id} not found."}
+        except FruitBatch.DoesNotExist:
+            logger.error(f"FruitBatch with ID {batch_id} not found.")
+            return {"error": f"FruitBatch with ID {batch_id} not found."}
+        
+        # Calculate days_since_harvest for ripeness prediction
+        days_since_harvest = 0
+        if hasattr(product, 'harvest_date') and product.harvest_date:
+            days_since_harvest = (timezone.now().date() - product.harvest_date).days
+        elif hasattr(product, 'production_date') and product.production_date:
+            days_since_harvest = (timezone.now().date() - product.production_date).days
+        
+        # Determine fruit_type for predictors
+        fruit_type = product.fruit_type.name if hasattr(product.fruit_type, 'name') else str(product.name) # Use product name as fallback
+
+        # 1. Fetch Sensor Data
+        if sensor_data is None:
+            sensor_data = self._get_latest_sensor_data(product)
+        
+        all_predictions_data = []
+        all_generated_alerts = []
+        
+        input_conditions = {
+            "temperature": sensor_data.get("temperature"),
+            "humidity": sensor_data.get("humidity"),
+            "light_intensity": sensor_data.get("light_intensity"),
+            "co2_level": sensor_data.get("co2_level"),
+            "ethylene_level": sensor_data.get("ethylene_level"),
+        }
+
+        # 2. Make Predictions using loaded_predictors
+        # Quality Prediction
+        if 'fruit_quality' in self.loaded_predictors:
+            try:
+                quality_predictor = self.loaded_predictors['fruit_quality']
+                quality_prediction_raw = quality_predictor.predict_quality(
+                    temperature=input_conditions["temperature"],
+                    humidity=input_conditions["humidity"],
+                    light_intensity=input_conditions["light_intensity"],
+                    co2_level=input_conditions["co2_level"]
+                )
+                quality_prediction = {
+                    "type": "quality",
+                    "predicted_value": quality_prediction_raw['predicted_class'],
+                    "confidence": quality_prediction_raw['confidence'],
+                    "score": quality_prediction_raw.get('score'),
+                    "input_conditions": input_conditions,
+                    "product": product,
+                    "batch": batch,
+                    "recommendations": quality_prediction_raw.get('recommendations', [])
+                }
+                all_predictions_data.append(quality_prediction)
+                
+                # Generate and Save Quality Alerts
+                quality_alerts = self._generate_quality_alerts(quality_prediction, product, batch)
+                for alert_data in quality_alerts:
+                    saved_alert = self._save_alert(alert_data, related_prediction=self._save_prediction(quality_prediction, product, batch))
+                    if saved_alert:
+                        all_generated_alerts.append(saved_alert)
+
+            except Exception as e:
+                logger.error(f"Error during quality prediction for product {product_id}: {e}")
+
+        # Ripeness Prediction
+        if 'ripeness' in self.loaded_predictors:
+            try:
+                ripeness_predictor = self.loaded_predictors['ripeness']
+                ripeness_prediction_raw = ripeness_predictor.predict_ripeness(
+                    fruit_type=fruit_type, # Added
+                    temperature=input_conditions["temperature"],
+                    ethylene_level=input_conditions["ethylene_level"],
+                    days_since_harvest=days_since_harvest, # Added
+                    humidity=input_conditions["humidity"], # Added
+                    light_exposure=input_conditions["light_intensity"] # Added
+                )
+                ripeness_prediction = {
+                    "type": "ripeness",
+                    "predicted_value": ripeness_prediction_raw['ripeness_stage'],
+                    "confidence": ripeness_prediction_raw['ripeness_score'], # Using ripeness_score as confidence for now
+                    "score": ripeness_prediction_raw.get('ripeness_score'), # Using ripeness_score as score
+                    "ripeness_stage": ripeness_prediction_raw['ripeness_stage'], # Added for alert generation
+                    "estimated_days_to_overripe": ripeness_prediction_raw.get('estimated_days_to_overripe'), # Added for alert generation
+                    "input_conditions": input_conditions,
+                    "product": product,
+                    "batch": batch,
+                    "recommendations": ripeness_prediction_raw.get('recommendations', [])
+                }
+                all_predictions_data.append(ripeness_prediction)
+                
+                # Generate and Save Ripeness Alerts
+                ripeness_alerts = self._generate_ripeness_alerts(ripeness_prediction, product, batch)
+                for alert_data in ripeness_alerts:
+                    saved_alert = self._save_alert(alert_data, related_prediction=self._save_prediction(ripeness_prediction, product, batch))
+                    if saved_alert:
+                        all_generated_alerts.append(saved_alert)
+
+            except Exception as e:
+                logger.error(f"Error during ripeness prediction for product {product_id}: {e}")
+
+        # Disease Prediction
+        if 'disease' in self.loaded_predictors:
+            try:
+                disease_predictor = self.loaded_predictors['disease']
+                disease_prediction_raw = disease_predictor.predict_disease(
+                    humidity=input_conditions["humidity"],
+                    temperature=input_conditions["temperature"] # Assuming temp is also a factor
+                )
+                disease_prediction = {
+                    "type": "disease",
+                    "predicted_value": disease_prediction_raw['disease_risk'],
+                    "confidence": disease_prediction_raw['confidence'],
+                    "score": disease_prediction_raw.get('score'),
+                    "input_conditions": input_conditions,
+                    "product": product,
+                    "batch": batch,
+                    "recommendations": disease_prediction_raw.get('recommendations', [])
+                }
+                all_predictions_data.append(disease_prediction)
+
+                # Generate and Save Disease Alerts
+                disease_alerts = self._generate_disease_alerts(disease_prediction, product, batch)
+                for alert_data in disease_alerts:
+                    saved_alert = self._save_alert(alert_data, related_prediction=self._save_prediction(disease_prediction, product, batch))
+                    if saved_alert:
+                        all_generated_alerts.append(saved_alert)
+
+            except Exception as e:
+                logger.error(f"Error during disease prediction for product {product_id}: {e}")
+
+        # Price Prediction
+        if 'price' in self.loaded_predictors:
+            try:
+                price_predictor = self.loaded_predictors['price']
+                price_prediction_raw = price_predictor.predict_price(
+                    product_features=product.get_price_features(), # Assuming product has a method to get features
+                    market_data=self.get_market_data(product.fruit_type) # Assuming get_market_data method
+                )
+                price_prediction = {
+                    "type": "price",
+                    "predicted_value": price_prediction_raw['recommended_price'],
+                    "confidence": price_prediction_raw.get('confidence'),
+                    "score": price_prediction_raw.get('score'),
+                    "input_conditions": input_conditions, # Include for context
+                    "product": product,
+                    "batch": batch,
+                    "recommendations": price_prediction_raw.get('recommendations', [])
+                }
+                all_predictions_data.append(price_prediction)
+                # saved_prediction = self._save_prediction(price_prediction, product, batch)
+
+            except Exception as e:
+                logger.error(f"Error during price prediction for product {product_id}: {e}")
+
+        # Shelf Life Prediction
+        if 'shelf_life' in self.loaded_predictors:
+            try:
+                shelf_life_predictor = self.loaded_predictors['shelf_life']
+                shelf_life_prediction_raw = shelf_life_predictor.predict_shelf_life(
+                    product=product,
+                    sensor_data=input_conditions
+                )
+                shelf_life_prediction = {
+                    "type": "shelf_life",
+                    "predicted_value": shelf_life_prediction_raw['predicted_value'],
+                    "confidence": shelf_life_prediction_raw['confidence'],
+                    "score": shelf_life_prediction_raw.get('predicted_days_remaining'), # Using days remaining as score
+                    "input_conditions": input_conditions,
+                    "product": product,
+                    "batch": batch,
+                    "recommendations": shelf_life_prediction_raw.get('recommendations', [])
+                }
+                all_predictions_data.append(shelf_life_prediction)
+
+                # Generate and Save Shelf Life Alerts
+                shelf_life_alerts = self._generate_shelf_life_alerts(shelf_life_prediction, product, batch)
+                for alert_data in shelf_life_alerts:
+                    saved_alert = self._save_alert(alert_data, related_prediction=self._save_prediction(shelf_life_prediction, product, batch))
+                    if saved_alert:
+                        all_generated_alerts.append(saved_alert)
+
+            except Exception as e:
+                logger.error(f"Error during shelf life prediction for product {product_id}: {e}")
+
+        # Ethylene Risk Prediction
+        if 'ethylene' in self.loaded_predictors:
+            try:
+                ethylene_predictor = self.loaded_predictors['ethylene']
+                # For this to work, we need `product` to have a `fruit_type` attribute
+                # and ideally some way to know other 'producers_in_area' or assume for now.
+                # Assuming volume_m3 and ventilation_rate are default or product-specific
+                
+                # Retrieve fruit_type from product model (assuming it exists)
+                fruit_type = product.fruit_type.name if hasattr(product.fruit_type, 'name') else product.name
+                
+                # Placeholder for producers_in_area for now, ideally derived from inventory
+                producers_in_area = [] 
+                # Could be improved by checking other products in the same StorageLocation
+
+                ethylene_prediction_raw = ethylene_predictor.predict_ethylene_risk(
+                    fruit_type=fruit_type,
+                    ethylene_level=input_conditions.get('ethylene_level', 0.0),
+                    producers_in_area=producers_in_area,
+                    volume_m3=getattr(product.storage_location, 'volume_m3', 100.0) if hasattr(product, 'storage_location') else 100.0,
+                    ventilation_rate=getattr(product.storage_location, 'ventilation_rate', 1.0) if hasattr(product, 'storage_location') else 1.0,
+                )
+                ethylene_prediction = {
+                    "type": "ethylene",
+                    "predicted_value": ethylene_prediction_raw['predicted_value'],
+                    "risk_level": ethylene_prediction_raw['risk_level'],
+                    "confidence": ethylene_prediction_raw['confidence'],
+                    "score": ethylene_prediction_raw['ethylene_concentration_ppm'], # Using ppm as score
+                    "input_conditions": input_conditions,
+                    "product": product,
+                    "batch": batch,
+                    "recommendations": ethylene_prediction_raw.get('recommendations', [])
+                }
+                all_predictions_data.append(ethylene_prediction)
+
+                # Generate and Save Ethylene Alerts
+                ethylene_alerts = self._generate_ethylene_alerts(ethylene_prediction, product, batch)
+                for alert_data in ethylene_alerts:
+                    saved_alert = self._save_alert(alert_data, related_prediction=self._save_prediction(ethylene_prediction, product, batch))
+                    if saved_alert:
+                        all_generated_alerts.append(saved_alert)
+
+            except Exception as e:
+                logger.error(f"Error during ethylene prediction for product {product_id}: {e}")
+
+        # 6. Send Notifications
+        if all_generated_alerts:
+            self._send_alert_notifications(all_generated_alerts)
+
+        return {
+            "product_id": product_id,
+            "batch_id": batch_id,
+            "sensor_data_used": input_conditions,
+            "predictions": all_predictions_data,
+            "alerts_generated": [alert.title for alert in all_generated_alerts]
+        }
+
+    def generate_product_insight_report(self, product_id: int, days_back: int = 7) -> Dict[str, Any]:
+        """
+        Generates a summary report of recent predictions and alerts for a given product.
+        """
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            logger.error(f"Product with ID {product_id} not found for report generation.")
+            return {"error": f"Product with ID {product_id} not found."}
+
+        start_date = timezone.now() - timedelta(days=days_back)
+        report = {
+            "product_id": product_id,
+            "product_name": product.name,
+            "report_period_days": days_back,
+            "generated_at": timezone.now().isoformat(),
+            "predictions_summary": {},
+            "alerts_summary": {},
+            "overall_status": "OK",
+            "recommendations": []
+        }
+
+        # --- Summarize Predictions ---
+        predictions = FruitPrediction.objects.filter(
+            product=product,
+            recorded_at__gte=start_date
+        ).order_by('-recorded_at')
+
+        report['predictions_summary']['total_predictions_count'] = predictions.count()
+        report['predictions_summary']['predictions_by_type'] = {}
+        report['predictions_summary']['latest_predictions'] = {}
+
+        prediction_types = predictions.values_list('prediction_type', flat=True).distinct()
+        for p_type in prediction_types:
+            type_predictions = predictions.filter(prediction_type=p_type)
+            if type_predictions.exists():
+                latest_pred = type_predictions.first()
+                report['predictions_summary']['predictions_by_type'][p_type] = {
+                    "count": type_predictions.count(),
+                    "avg_confidence": type_predictions.aggregate(Avg('confidence'))['confidence__avg'] or 0.0,
+                    "avg_score": type_predictions.aggregate(Avg('predicted_score'))['predicted_score__avg'] or 0.0,
+                }
+                report['predictions_summary']['latest_predictions'][p_type] = {
+                    "value": latest_pred.predicted_value,
+                    "confidence": latest_pred.confidence,
+                    "score": latest_pred.predicted_score,
+                    "alert_level": latest_pred.alert_level,
+                    "recorded_at": latest_pred.recorded_at.isoformat()
+                }
+                if latest_pred.alert_level in ['critical', 'warning']:
+                    report['recommendations'].append(f"Based on latest {p_type} prediction: {latest_pred.alert_message}")
+
+        # --- Summarize Alerts ---
+        alerts = AlertNotification.objects.filter(
+            product=product,
+            created_at__gte=start_date
+        ).order_by('-created_at')
+
+        report['alerts_summary']['total_alerts_count'] = alerts.count()
+        report['alerts_summary']['alerts_by_priority'] = {}
+        report['alerts_summary']['recent_critical_alerts'] = []
+
+        alert_priorities = alerts.values_list('priority', flat=True).distinct()
+        for ap in alert_priorities:
+            report['alerts_summary']['alerts_by_priority'][ap] = alerts.filter(priority=ap).count()
+        
+        critical_alerts = alerts.filter(priority__in=['critical', 'high'])[:5] # Get up to 5 recent critical alerts
+        for alert in critical_alerts:
+            report['alerts_summary']['recent_critical_alerts'].append({
+                "title": alert.title,
+                "message": alert.message,
+                "priority": alert.priority,
+                "created_at": alert.created_at.isoformat()
+            })
+            report['recommendations'].append(f"URGENT ALERT: {alert.title} - {alert.message}")
+            if alert.priority == 'critical':
+                report['overall_status'] = "CRITICAL"
+            elif alert.priority == 'high' and report['overall_status'] != "CRITICAL":
+                report['overall_status'] = "WARNING"
+
+
+        # --- Determine Overall Status ---
+        # If overall_status is still OK, check latest predictions for warnings
+        if report['overall_status'] == "OK":
+            for p_type, pred_data in report['predictions_summary']['latest_predictions'].items():
+                if pred_data['alert_level'] == 'critical':
+                    report['overall_status'] = "CRITICAL"
+                    break
+                elif pred_data['alert_level'] == 'warning':
+                    report['overall_status'] = "WARNING"
+            
+        # Refine recommendations based on overall status
+        if report['overall_status'] == "OK" and not report['recommendations']:
+            report['recommendations'].append(f"Product {product.name} is stable and within acceptable parameters.")
+        elif not report['recommendations'] and report['overall_status'] != "OK":
+             report['recommendations'].append(f"Product {product.name} requires attention based on recent insights.")
+
+
+        return report

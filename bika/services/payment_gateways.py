@@ -548,32 +548,215 @@ class AirtelMoneyGateway(BasePaymentGateway):
 # ==================== RWANDA PAYMENT GATEWAYS ====================
 
 class MTNRwandaGateway(BasePaymentGateway):
-    """MTN Rwanda Mobile Money Gateway"""
+    """MTN Rwanda Mobile Money Gateway - Production-ready structure"""
     
-    def initiate_payment(self, payment):
-        """Initiate MTN Rwanda payment"""
+    def __init__(self, gateway_config):
+        super().__init__(gateway_config)
+        # MTN specific endpoints - User MUST configure these
+        # These URLs are illustrative. Replace with actual MTN MoMo API URLs.
+        if self.environment == 'sandbox':
+            self.api_base_url = "https://sandbox.mtn.com/api" # Placeholder: Replace with actual MTN Sandbox API URL
+            self.token_url = "https://sandbox.mtn.com/oauth/token" # Placeholder: Replace with actual MTN Token URL
+            self.initiate_url = "https://sandbox.mtn.com/collection/v1_0/requesttopay" # Placeholder: Replace with actual MTN Request to Pay URL
+            self.status_url = "https://sandbox.mtn.com/collection/v1_0/requesttopay/" # Placeholder: Replace with actual MTN Request to Pay Status URL
+        else:
+            self.api_base_url = "https://api.mtn.com/api" # Placeholder: Replace with actual MTN Live API URL
+            self.token_url = "https://api.mtn.com/oauth/token" # Placeholder: Replace with actual MTN Token URL
+            self.initiate_url = "https://api.mtn.com/collection/v1_0/requesttopay" # Placeholder: Replace with actual MTN Request to Pay URL
+            self.status_url = "https://api.mtn.com/collection/v1_0/requesttopay/" # Placeholder: Replace with actual MTN Request to Pay Status URL
+        
+        # Additional MTN specific credentials from gateway_config (these fields need to be added to PaymentGatewaySettings model)
+        # For MTN MoMo API, you typically need:
+        # 1. Primary Key (Ocp-Apim-Subscription-Key)
+        # 2. Secondary Key (for basic auth in token)
+        # 3. User ID (often UUID for API User)
+        # 4. API Key (for API User)
+        
+        # NOTE: The PaymentGatewaySettings model needs to be extended to store `api_user` and `api_password`
+        # for MTN MoMo specific API User creation. For now, using existing api_key/api_secret.
+        
+        self.primary_key = gateway_config.api_key # Ocp-Apim-Subscription-Key, also used for basic auth username
+        self.secondary_key = gateway_config.api_secret # Basic auth password
+        self.api_user_uuid = gateway_config.merchant_id # This typically corresponds to x_reference_id for the API User in MTN
+        self.api_user_key = gateway_config.webhook_secret # Re-using webhook_secret for API User's API Key
+        
+        # Your publicly accessible domain for webhooks. User MUST configure this in settings.py.
+        self.callback_host = getattr(settings, 'MTN_CALLBACK_HOST', 'https://your-public-domain.com')
+
+    def get_access_token(self):
+        """Get MTN API access token (for Collection API)"""
         try:
-            # MTN Rwanda API simulation
-            import uuid
-            transaction_id = f"MTNRW-{uuid.uuid4().hex[:12].upper()}"
+            # First, create an API User if not already created (this is usually a one-time setup step)
+            # This logic needs to be handled outside, or in an admin command, not on every token request.
+            # For simplicity here, we assume the API User is pre-created and we have its UUID and API Key.
             
-            payment.transaction_id = transaction_id
-            payment.mobile_money_provider = 'mtn_rw'
-            payment.save()
+            # Requesting token using API User's UUID and API Key
+            # This part assumes a specific MTN API token endpoint flow. Adjust as per actual API.
+            headers = {
+                'Authorization': f'Basic {base64.b64encode(f"{self.api_user_uuid}:{self.api_user_key}".encode()).decode()}',
+                'Ocp-Apim-Subscription-Key': self.primary_key,
+                'Content-Type': 'application/json'
+            }
+            data = {'grant_type': 'client_credentials'}
+
+            response = requests.post(self.token_url, headers=headers, json=data, timeout=10)
+            response.raise_for_status() # Raise an exception for HTTP errors
+            token_data = response.json()
             
             return {
                 'success': True,
-                'transaction_id': transaction_id,
-                'message': 'MTN Mobile Money payment initiated',
-                'instruction': f"Confirm payment on your MTN Mobile Money"
+                'access_token': token_data.get('access_token'),
+                'expires_in': token_data.get('expires_in')
             }
-                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"MTN Token request failed: {e}")
+            return {'success': False, 'error': f"MTN Token request failed: {e}"}
+        except json.JSONDecodeError:
+            logger.error(f"MTN Token: Invalid JSON response: {getattr(response, 'text', 'N/A')}")
+            return {'success': False, 'error': "MTN Token: Invalid API response"}
         except Exception as e:
-            logger.error(f"MTN Rwanda payment initiation error: {e}")
-            return {
-                'success': False,
-                'error': str(e)
+            logger.error(f"MTN Token unexpected error: {e}")
+            return {'success': False, 'error': f"MTN Token unexpected error: {e}"}
+
+    def initiate_payment(self, payment):
+        """Initiate MTN Mobile Money payment (Request to Pay)"""
+        import uuid # Ensure uuid is imported at the top of the file
+        try:
+            token_response = self.get_access_token()
+            if not token_response['success']:
+                return token_response
+            access_token = token_response['access_token']
+
+            # Generate a UUID for the transaction reference
+            transaction_uuid = str(uuid.uuid4())
+
+            headers = {
+                'Authorization': f'Bearer {access_token}',
+                'X-Reference-Id': transaction_uuid, # This is a unique ID for the request
+                'X-Target-Environment': self.environment.upper(), # e.g., "SANDBOX" or "PRODUCTION"
+                'Content-Type': 'application/json',
+                'Ocp-Apim-Subscription-Key': self.primary_key,
+                # The X-Callback-Url must be publicly accessible and configured in MTN Developer Portal
+                'X-Callback-Url': f"{self.callback_host}{reverse('bika:payment_webhook_mtn')}" # Specific webhook for MTN
             }
+            
+            data = {
+                "amount": str(int(payment.amount)), # MTN typically uses integer amount (e.g., 1000 for 10.00 if currency has 2 decimal places)
+                "currency": payment.currency.upper(),
+                "externalId": f"ORDER-{payment.order.order_number}", # Your own reference
+                "payer": {
+                    "partyIdType": "MSISDN", # Mobile Subscriber ISDN
+                    "partyId": payment.mobile_money_phone # User's mobile money number (e.g., "25078XXXXXXX")
+                },
+                "payerMessage": f"Payment for order {payment.order.order_number}",
+                "payeeNote": f"Payment for order {payment.order.order_number}"
+            }
+
+            response = requests.post(self.initiate_url, headers=headers, json=data, timeout=30)
+            
+            # MTN's request to pay often returns 202 Accepted with no body on success, but an error can return a body.
+            response.raise_for_status() # Will raise an exception for 4xx/5xx responses
+            
+            if response.status_code == 202:
+                payment.transaction_id = transaction_uuid # Store MTN's reference ID (X-Reference-Id)
+                payment.mobile_money_provider = 'mtn_rw' # Use configured gateway name
+                payment.save()
+
+                return {
+                    'success': True,
+                    'transaction_id': transaction_uuid,
+                    'message': 'MTN Mobile Money payment request sent. Awaiting confirmation from user.',
+                    'instruction': f"Confirm payment on your MTN Mobile Money account. Transaction ID: {transaction_uuid}"
+                }
+            else:
+                # This block might be reached if response.raise_for_status() doesn't catch all cases
+                error_msg = response.text or 'MTN payment initiation failed with unknown error'
+                logger.error(f"MTN Payment Initiation Error ({response.status_code}): {error_msg}")
+                return {'success': False, 'error': error_msg}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"MTN Payment initiation request failed: {e}. Response: {getattr(e.response, 'text', 'N/A')}")
+            return {'success': False, 'error': f"MTN Payment initiation request failed: {e}"}
+        except Exception as e:
+            logger.error(f"MTN Payment initiation unexpected error: {e}")
+            return {'success': False, 'error': f"MTN Payment initiation unexpected error: {e}"}
+
+    def verify_payment(self, transaction_id):
+        """Verify MTN Mobile Money payment status using the X-Reference-Id"""
+        try:
+            token_response = self.get_access_token()
+            if not token_response['success']:
+                return token_response
+            access_token = token_response['access_token']
+
+            headers = {
+                'Authorization': f'Bearer {access_token}',
+                'Ocp-Apim-Subscription-Key': self.primary_key,
+                'X-Target-Environment': self.environment.upper(),
+            }
+
+            # transaction_id here is MTN's X-Reference-Id (UUID)
+            response = requests.get(f"{self.status_url}{transaction_id}", headers=headers, timeout=30)
+            response.raise_for_status()
+            status_data = response.json()
+
+            mtn_status = status_data.get('status')
+            
+            status_map = {
+                "PENDING": "pending",
+                "SUCCESSFUL": "completed",
+                "FAILED": "failed"
+            }
+            
+            payment_status = status_map.get(mtn_status, "pending")
+
+            return {
+                'success': True,
+                'status': payment_status,
+                'transaction_id': transaction_id, # This is the X-Reference-Id
+                'amount': float(status_data.get('amount', 0)),
+                'currency': status_data.get('currency'),
+                'message': f"MTN status: {mtn_status}",
+                'financial_transaction_id': status_data.get('financialTransactionId') # Actual transaction ID from MTN
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"MTN Payment verification request failed: {e}. Response: {getattr(e.response, 'text', 'N/A')}")
+            return {'success': False, 'error': f"MTN Payment verification request failed: {e}"}
+        except json.JSONDecodeError:
+            logger.error(f"MTN Verification: Invalid JSON response: {getattr(response, 'text', 'N/A')}")
+            return {'success': False, 'error': "MTN Verification: Invalid API response"}
+        except Exception as e:
+            logger.error(f"MTN Payment verification unexpected error: {e}")
+            return {'success': False, 'error': f"MTN Payment verification unexpected error: {e}"}
+
+    def process_webhook(self, payload):
+        """Process MTN Mobile Money webhook callback"""
+        try:
+            # MTN webhooks typically provide the status update for a transaction X-Reference-Id
+            # The structure of the payload depends on MTN's webhook implementation
+            # This is an example structure based on common MoMo webhook designs.
+            
+            transaction_uuid = payload.get('referenceId') # This maps to our payment.transaction_id
+            mtn_status = payload.get('status')
+            
+            status_map = {
+                "PENDING": "pending",
+                "SUCCESSFUL": "completed",
+                "FAILED": "failed"
+            }
+            payment_status = status_map.get(mtn_status, "failed")
+
+            return {
+                'success': True,
+                'transaction_id': transaction_uuid,
+                'status': payment_status,
+                'message': f"Webhook update from MTN: {mtn_status}",
+                'raw_payload': payload
+            }
+        except Exception as e:
+            logger.error(f"MTN webhook processing error: {e}")
+            return {'success': False, 'error': f"MTN webhook processing error: {e}"}
 
 # ==================== INTERNATIONAL PAYMENT GATEWAYS ====================
 

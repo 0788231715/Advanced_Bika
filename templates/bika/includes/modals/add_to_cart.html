@@ -1,0 +1,102 @@
+{% load static %}
+<div class="modal fade" id="addToCartModal" tabindex="-1" aria-labelledby="addToCartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addToCartModalLabel">
+                    <i class="fas fa-shopping-cart me-2"></i>Add to Cart
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <img src="{% static 'images/placeholder-product.jpg' %}" class="img-fluid rounded" alt="Product Image" id="modal-product-image">
+                    </div>
+                    <div class="col-md-8">
+                        <h5 id="modal-product-name">Product Name</h5>
+                        <p class="text-muted mb-2">
+                            <span id="modal-product-price" class="fw-bold">$0.00</span>
+                        </p>
+                        <p id="modal-product-description" class="small text-muted">A short description of the product...</p>
+                        
+                        <div class="mb-3">
+                            <label for="modal-product-quantity" class="form-label">Quantity:</label>
+                            <input type="number" class="form-control" id="modal-product-quantity" value="1" min="1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Continue Shopping</button>
+                <button type="button" class="btn btn-primary" id="confirmAddToCartBtn">
+                    <i class="fas fa-cart-plus me-2"></i>Add to Cart
+                </button>
+                <a href="{% url 'bika:cart' %}" class="btn btn-success">
+                    <i class="fas fa-shopping-basket me-2"></i>View Cart
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Add any specific styles for this modal here if needed */
+    #modal-product-image {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+    }
+</style>
+
+<script>
+    // Example JavaScript to populate the modal (needs to be implemented in a larger script)
+    document.addEventListener('DOMContentLoaded', function() {
+        var addToCartModal = document.getElementById('addToCartModal');
+        addToCartModal.addEventListener('show.bs.modal', function (event) {
+            // Button that triggered the modal
+            var button = event.relatedTarget; 
+            // Extract info from data-bs-* attributes
+            var productId = button.getAttribute('data-product-id');
+            var productName = button.getAttribute('data-product-name');
+            var productPrice = button.getAttribute('data-product-price');
+            var productImage = button.getAttribute('data-product-image');
+            var productDescription = button.getAttribute('data-product-description');
+            
+            // Update the modal's content.
+            var modalImage = addToCartModal.querySelector('#modal-product-image');
+            var modalName = addToCartModal.querySelector('#modal-product-name');
+            var modalPrice = addToCartModal.querySelector('#modal-product-price');
+            var modalDescription = addToCartModal.querySelector('#modal-product-description');
+            var modalQuantity = addToCartModal.querySelector('#modal-product-quantity');
+            var confirmBtn = addToCartModal.querySelector('#confirmAddToCartBtn');
+
+            modalImage.src = productImage || "{% static 'images/placeholder-product.jpg' %}";
+            modalName.textContent = productName;
+            modalPrice.textContent = productPrice;
+            modalDescription.textContent = productDescription || 'No description available.';
+            modalQuantity.value = 1; // Reset quantity
+            
+            // Set data-product-id on the confirm button for AJAX call
+            confirmBtn.setAttribute('data-product-id', productId);
+        });
+
+        // Event listener for the actual "Add to Cart" button inside the modal
+        document.getElementById('confirmAddToCartBtn').addEventListener('click', function() {
+            var productId = this.getAttribute('data-product-id');
+            var quantity = document.getElementById('modal-product-quantity').value;
+            
+            // Here you would typically make an AJAX call to add the product to the cart
+            console.log(`Adding product ${productId} with quantity ${quantity} to cart.`);
+            
+            // Simulate successful add to cart
+            alert(`Added ${quantity} of product ${productId} to cart!`);
+            var bsModal = bootstrap.Modal.getInstance(addToCartModal);
+            bsModal.hide();
+            
+            // Optionally, update a cart counter in the header, etc.
+            // You might dispatch a custom event or call a global function
+            // Eg: updateCartCount(newCount);
+        });
+    });
+</script>

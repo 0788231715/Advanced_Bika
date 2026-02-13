@@ -1,28 +1,9 @@
 # bika/ai_integration/models.py
 from django.db import models
 from django.utils import timezone
-from bika.models import FruitProduct, Warehouse, Batch  # Your existing models
+from bika.models import Product, StorageLocation, FruitBatch, TrainedModel
 
-class TrainedModel(models.Model):
-    """Store trained AI models"""
-    MODEL_TYPES = [
-        ('quality', 'Quality Prediction'),
-        ('ripeness', 'Ripeness Prediction'),
-        ('disease', 'Disease Risk'),
-        ('price', 'Price Prediction'),
-    ]
-    
-    name = models.CharField(max_length=100)
-    model_type = models.CharField(max_length=20, choices=MODEL_TYPES)
-    model_file = models.FileField(upload_to='ai_models/')
-    version = models.CharField(max_length=20)
-    accuracy = models.FloatField(default=0.0)
-    trained_date = models.DateTimeField(default=timezone.now)
-    is_active = models.BooleanField(default=True)
-    features_used = models.JSONField(default=list)
-    
-    def __str__(self):
-        return f"{self.name} v{self.version} ({self.accuracy:.2%})"
+
 
 class FruitPrediction(models.Model):
     """Store predictions for each fruit/product"""

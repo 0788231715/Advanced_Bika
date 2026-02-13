@@ -1,5 +1,7 @@
 # bika/views.py - FIXED AND COMPLETE VERSION
 from decimal import Decimal
+from email.headerregistry import Address
+from email.policy import default
 import os
 import json
 import logging
@@ -31,6 +33,7 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.utils import timezone
 from django.urls import reverse
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from .services import payment_service, PAYMENT_SERVICES_AVAILABLE
 # Add these imports at the top of views.py after existing imports
 from sklearn.model_selection import train_test_split, cross_val_score
@@ -43,12 +46,13 @@ from sklearn.neighbors import KNeighborsClassifier
 
 # Import models
 from .models import (
-    CustomUser, Delivery, DeliveryItem, DeliveryStatusHistory, InventoryHistory, InventoryItem, Product, ProductCategory, ProductImage, ProductReview,
+    CustomUser, Delivery, DeliveryItem, DeliveryStatusHistory, InventoryHistory, InventoryItem, Product, ProductCategory, ProductImage, ProductReview, UserRole,
     Wishlist, Cart, Order, OrderItem, Payment,
     SiteInfo, Service, Testimonial, ContactMessage, FAQ,
     StorageLocation, FruitType, FruitBatch, FruitQualityReading, 
     RealTimeSensorData, ProductAlert, Notification,
-    ProductDataset, TrainedModel, PaymentGatewaySettings, CurrencyExchangeRate
+    ProductDataset, TrainedModel, PaymentGatewaySettings, CurrencyExchangeRate,
+    NotificationSettings, TwoFactorSettings # Newly added
 )
 
 # Make sure these imports exist:
@@ -65,9 +69,10 @@ from .models import (
     ClientRequest, InventoryItem, Delivery, DeliveryItem, DeliveryStatusHistory,
     InventoryHistory, ProductCategory, SiteInfo, CustomUser
 )
+from django.contrib.auth import update_session_auth_hash # Newly added
 
 # Import forms
-from .forms import ClientRequestForm
+from .forms import ClientRequestForm, DeliveryProofForm, DeliveryStatusUpdateForm, InventoryItemForm, UserRoleForm
 
 # Import decorators
 from .decorators import role_required
@@ -76,8 +81,11 @@ from .decorators import role_required
 from .forms import (
     ContactForm, NewsletterForm, CustomUserCreationForm, 
     VendorRegistrationForm, CustomerRegistrationForm, ProductForm,
-    ProductImageForm, FruitBatchForm, FruitQualityReadingForm
+    ProductImageForm, FruitBatchForm, FruitQualityReadingForm,
+    UserProfileForm, VendorProfileForm, NotificationSettingsForm, TwoFactorSetupForm, # Newly added
+    AddressForm # Added AddressForm
 )
+from .forms import ClientProductCreationForm # Explicitly import this one
 
 # Import services
 
@@ -221,7 +229,8 @@ class HomeView(TemplateView):
         try:
             featured_products = Product.objects.filter(
                 status='active',
-                is_featured=True
+                is_featured=True,
+                product_type='public'
             ).select_related('category', 'vendor')[:8]
             
             # Add primary images
@@ -254,7 +263,7 @@ class HomeView(TemplateView):
         )[:8]
         
         # Get stats for homepage
-        context['total_products'] = Product.objects.filter(status='active').count()
+        context['total_products'] = Product.objects.filter(status='active', product_type='public').count()
         context['total_vendors'] = CustomUser.objects.filter(
             user_type='vendor', 
             is_active=True
@@ -278,7 +287,8 @@ def product_search_view(request):
         Q(short_description__icontains=query) |
         Q(tags__icontains=query) |
         Q(category__name__icontains=query),
-        status='active'
+        status='active',
+        product_type='public'
     ).select_related('category', 'vendor')
     
     # Get search suggestions
@@ -328,42 +338,124 @@ def user_settings(request):
 
 @login_required
 @require_POST
+def add_to_cart(request, product_id):
+    """Add product to cart (regular form submission)"""
+    product = get_object_or_404(Product, id=product_id)
+    quantity = int(request.POST.get('quantity', 1))
+
+    if quantity < 1:
+        messages.error(request, 'Quantity must be at least 1.')
+        return redirect('bika:product_detail', slug=product.slug)
+
+    # Check stock
+    if product.track_inventory and product.stock_quantity < quantity and not product.allow_backorders:
+        messages.error(request, f'Only {product.stock_quantity} of "{product.name}" are available in stock.')
+        return redirect('bika:product_detail', slug=product.slug)
+
+    try:
+        cart_item, created = Cart.objects.get_or_create(
+            user=request.user,
+            product=product,
+            defaults={'quantity': quantity}
+        )
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+        
+        # Stock deduction is now handled during order placement (place_order view)
+        # It should NOT be deducted when adding to cart.
+
+        messages.success(request, f'{quantity} x "{product.name}" added to cart!')
+    except Exception as e:
+        messages.error(request, f'Error adding to cart: {e}')
+
+    return redirect('bika:product_detail', slug=product.slug)
+
+@login_required
+@require_POST
 def quick_add_to_cart(request, product_id):
     """Quick add to cart (for AJAX requests)"""
     product = get_object_or_404(Product, id=product_id)
-    
-    # Check stock
-    if product.track_inventory and product.stock_quantity < 1:
+    quantity = int(request.POST.get('quantity', 1)) # Get quantity from AJAX request
+
+    if quantity < 1:
         return JsonResponse({
             'success': False,
-            'message': f'Product out of stock!'
+            'message': 'Quantity must be at least 1.'
         })
+
+    # Check stock
+    if product.track_inventory and product.stock_quantity < quantity and not product.allow_backorders:
+        return JsonResponse({
+            'success': False,
+            'message': f'Only {product.stock_quantity} of "{product.name}" are available in stock.',
+            'new_stock_quantity': product.stock_quantity,
+            'allow_backorders': product.allow_backorders
+        })
+
+    try:
+        cart_item, created = Cart.objects.get_or_create(
+            user=request.user,
+            product=product,
+            defaults={'quantity': quantity}
+        )
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+
+        # Stock deduction is now handled during order placement (place_order view)
+        # It should NOT be deducted when adding to cart.
+
+        cart_count = Cart.objects.filter(user=request.user).count()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{product.name} added to cart!',
+            'cart_count': cart_count,
+            'created': created,
+            'new_stock_quantity': product.stock_quantity, # Return current stock quantity (not affected by adding to cart)
+            'allow_backorders': product.allow_backorders
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error adding to cart: {e}'
+        })
+
+@login_required
+@require_POST
+@transaction.atomic
+def buy_now_product(request, product_id):
+    """Directly buy a single product, bypassing the cart."""
+    product = get_object_or_404(Product, id=product_id)
+    quantity = int(request.POST.get('quantity', 1))
+
+    if quantity < 1:
+        messages.error(request, 'Quantity must be at least 1.')
+        return redirect('bika:product_detail', slug=product.slug)
+
+    # Check if the user is the vendor of this product
+    if request.user == product.vendor:
+        messages.error(request, "You cannot buy your own product.")
+        return redirect('bika:product_detail', slug=product.slug)
+
+    # Check stock
+    if product.track_inventory and product.stock_quantity < quantity:
+        messages.error(request, f'Only {product.stock_quantity} of "{product.name}" are available in stock.')
+        return redirect('bika:product_detail', slug=product.slug)
     
-    # Add to cart
-    cart_item, created = Cart.objects.get_or_create(
-        user=request.user,
-        product=product,
-        defaults={'quantity': 1}
-    )
+    # Store product and quantity in session for direct checkout
+    request.session['direct_buy_product_id'] = product.id
+    request.session['direct_buy_quantity'] = quantity
     
-    if not created:
-        cart_item.quantity += 1
-        cart_item.save()
-    
-    # Get updated cart count
-    cart_count = Cart.objects.filter(user=request.user).count()
-    
-    return JsonResponse({
-        'success': True,
-        'message': f'{product.name} added to cart!',
-        'cart_count': cart_count,
-        'created': created
-    })
+    messages.info(request, f'Proceeding to direct checkout for {quantity} x {product.name}.')
+    return redirect('bika:checkout')
+
 def about_view(request):
     services = Service.objects.filter(is_active=True)
     testimonials = Testimonial.objects.filter(is_active=True)[:4]
     site_info = SiteInfo.objects.first()
-    
+        
     context = {
         'services': services,
         'testimonials': testimonials,
@@ -483,10 +575,12 @@ def newsletter_subscribe(request):
 # ==================== DASHBOARD ENHANCEMENTS ====================
 
 @staff_member_required
+@staff_member_required
 def admin_dashboard(request):
     """Enhanced admin dashboard with comprehensive statistics"""
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
     thirty_days_ago = now - timedelta(days=30)
     
     # ===== USER STATISTICS =====
@@ -494,7 +588,15 @@ def admin_dashboard(request):
     total_admins = CustomUser.objects.filter(user_type='admin').count()
     total_vendors = CustomUser.objects.filter(user_type='vendor').count()
     total_customers = CustomUser.objects.filter(user_type='customer').count()
+    total_clients = CustomUser.objects.filter(user_type='client').count()
+    total_drivers = CustomUser.objects.filter(user_type='driver').count()
+    total_storage_staff = CustomUser.objects.filter(user_type='storage_staff').count()
+    
     new_users_today = CustomUser.objects.filter(date_joined__gte=today_start).count()
+    new_users_yesterday = CustomUser.objects.filter(
+        date_joined__gte=yesterday_start, 
+        date_joined__lt=today_start
+    ).count()
     active_users = CustomUser.objects.filter(last_login__gte=thirty_days_ago).count()
     
     # Calculate percentages
@@ -502,8 +604,9 @@ def admin_dashboard(request):
         admin_percentage = round((total_admins / total_users) * 100, 1)
         vendor_percentage = round((total_vendors / total_users) * 100, 1)
         customer_percentage = round((total_customers / total_users) * 100, 1)
+        client_percentage = round((total_clients / total_users) * 100, 1)
     else:
-        admin_percentage = vendor_percentage = customer_percentage = 0
+        admin_percentage = vendor_percentage = customer_percentage = client_percentage = 0
     
     # ===== PRODUCT STATISTICS =====
     total_products = Product.objects.count()
@@ -520,6 +623,10 @@ def admin_dashboard(request):
     ).count()
     featured_products = Product.objects.filter(is_featured=True, status='active').count()
     
+    # Product types
+    public_products = Product.objects.filter(product_type='public', status='active').count()
+    private_products = Product.objects.filter(product_type='private', status='active').count()
+    
     # ===== ORDER STATISTICS =====
     total_orders = Order.objects.count()
     pending_orders = Order.objects.filter(status='pending').count()
@@ -527,6 +634,13 @@ def admin_dashboard(request):
     shipped_orders = Order.objects.filter(status='shipped').count()
     delivered_orders = Order.objects.filter(status='delivered').count()
     cancelled_orders = Order.objects.filter(status='cancelled').count()
+    
+    # Order trend - today vs yesterday
+    orders_today = Order.objects.filter(created_at__gte=today_start).count()
+    orders_yesterday = Order.objects.filter(
+        created_at__gte=yesterday_start,
+        created_at__lt=today_start
+    ).count()
     
     # ===== REVENUE CALCULATIONS =====
     completed_orders = Order.objects.filter(status='delivered')
@@ -539,6 +653,32 @@ def admin_dashboard(request):
     ).aggregate(
         total=Sum('total_amount')
     )['total'] or 0
+    
+    yesterday_revenue = completed_orders.filter(
+        created_at__gte=yesterday_start,
+        created_at__lt=today_start
+    ).aggregate(
+        total=Sum('total_amount')
+    )['total'] or 0
+    
+    # ===== INVENTORY STATISTICS =====
+    total_inventory_items = InventoryItem.objects.count()
+    active_inventory = InventoryItem.objects.filter(status='active').count()
+    low_stock_inventory = InventoryItem.objects.filter(
+        quantity__lte=F('low_stock_threshold'),
+        status='active'
+    ).count()
+    near_expiry_items = InventoryItem.objects.filter(
+        expiry_date__lte=now.date() + timedelta(days=7),
+        expiry_date__gte=now.date(),
+        status='active'
+    ).count()
+    
+    # ===== DELIVERY STATISTICS =====
+    total_deliveries = Delivery.objects.count()
+    pending_deliveries = Delivery.objects.filter(status='pending').count()
+    in_transit_deliveries = Delivery.objects.filter(status='in_transit').count()
+    delivered_deliveries = Delivery.objects.filter(status='delivered').count()
     
     # ===== CATEGORY STATISTICS =====
     total_categories = ProductCategory.objects.count()
@@ -556,42 +696,125 @@ def admin_dashboard(request):
     # ===== AI SYSTEM STATS =====
     total_predictions = FruitQualityReading.objects.count()
     dataset_size = ProductDataset.objects.count()
-    active_vendors = CustomUser.objects.filter(
-        user_type='vendor', is_active=True
-    ).count()
+    active_models = TrainedModel.objects.filter(is_active=True).count()
+    total_models = TrainedModel.objects.count()
     
     # Get critical alerts
     critical_alerts = ProductAlert.objects.filter(
         is_resolved=False, severity='critical'
     ).count()
+    high_alerts = ProductAlert.objects.filter(
+        is_resolved=False, severity='high'
+    ).count()
+    medium_alerts = ProductAlert.objects.filter(
+        is_resolved=False, severity='medium'
+    ).count()
+    total_active_alerts = critical_alerts + high_alerts + medium_alerts
     
     # ===== RECENT DATA =====
     recent_products = Product.objects.select_related(
         'vendor', 'category'
-    ).prefetch_related('images').order_by('-created_at')[:6]
+    ).prefetch_related('images').order_by('-created_at')[:8]
     
-    recent_orders = Order.objects.select_related('user').order_by('-created_at')[:5]
+    recent_orders = Order.objects.select_related('user').order_by('-created_at')[:8]
     
     recent_messages = ContactMessage.objects.filter(
         status='new'
     ).order_by('-submitted_at')[:5]
     
-    # Get Django version and debug status
+    recent_alerts = ProductAlert.objects.filter(
+        is_resolved=False
+    ).select_related('product').order_by('-created_at')[:5]
+    
+    recent_users = CustomUser.objects.order_by('-date_joined')[:5]
+    
+    # ===== CHART DATA =====
+    # Sales data for last 7 days
+    sales_data = []
+    for i in range(7):
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        daily_sales = Order.objects.filter(
+            created_at__range=[day_start, day_end],
+            status='delivered'
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+        
+        sales_data.append({
+            'day': day.strftime('%a'),
+            'date': day.strftime('%d/%m'),
+            'sales': float(daily_sales),
+            'orders': Order.objects.filter(
+                created_at__range=[day_start, day_end],
+                status='delivered'
+            ).count()
+        })
+    
+    sales_data.reverse()  # Show oldest to newest
+    
+    # User registration data for last 7 days
+    user_registration_data = []
+    for i in range(7):
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        daily_users = CustomUser.objects.filter(
+            date_joined__range=[day_start, day_end]
+        ).count()
+        
+        user_registration_data.append({
+            'day': day.strftime('%a'),
+            'date': day.strftime('%d/%m'),
+            'users': daily_users
+        })
+    
+    user_registration_data.reverse()
+    
+    # ===== SYSTEM INFO =====
     import django
+    import platform
     from django.conf import settings
+    import psutil
+    
+    django_version = django.get_version()
+    debug = settings.DEBUG
+    python_version = platform.python_version()
+    
+    # Get system info
+    cpu_usage = psutil.cpu_percent(interval=1)
+    memory = psutil.virtual_memory()
+    memory_usage = memory.percent
+    disk = psutil.disk_usage('/')
+    disk_usage = disk.percent
+    
+    # Get Django version and debug status
     django_version = django.get_version()
     debug = settings.DEBUG
     
     # Add status colors for orders
+    status_colors = {
+        'pending': 'warning',
+        'confirmed': 'info',
+        'shipped': 'primary',
+        'delivered': 'success',
+        'cancelled': 'danger'
+    }
+    
     for order in recent_orders:
-        status_colors = {
-            'pending': 'warning',
-            'confirmed': 'info',
-            'shipped': 'primary',
-            'delivered': 'success',
-            'cancelled': 'danger'
-        }
         order.status_color = status_colors.get(order.status, 'secondary')
+    
+    # Add alert colors
+    alert_colors = {
+        'critical': 'danger',
+        'high': 'warning',
+        'medium': 'info',
+        'low': 'secondary'
+    }
+    
+    for alert in recent_alerts:
+        alert.severity_color = alert_colors.get(alert.severity, 'secondary')
     
     context = {
         # User statistics
@@ -599,12 +822,16 @@ def admin_dashboard(request):
         'total_admins': total_admins,
         'total_vendors': total_vendors,
         'total_customers': total_customers,
+        'total_clients': total_clients,
+        'total_drivers': total_drivers,
+        'total_storage_staff': total_storage_staff,
         'new_users_today': new_users_today,
+        'new_users_yesterday': new_users_yesterday,
         'active_users': active_users,
         'admin_percentage': admin_percentage,
         'vendor_percentage': vendor_percentage,
         'customer_percentage': customer_percentage,
-        'active_vendors': active_vendors,
+        'client_percentage': client_percentage,
         
         # Product statistics
         'total_products': total_products,
@@ -613,6 +840,8 @@ def admin_dashboard(request):
         'out_of_stock': out_of_stock,
         'low_stock': low_stock,
         'featured_products': featured_products,
+        'public_products': public_products,
+        'private_products': private_products,
         
         # Order statistics
         'total_orders': total_orders,
@@ -621,10 +850,25 @@ def admin_dashboard(request):
         'shipped_orders': shipped_orders,
         'delivered_orders': delivered_orders,
         'cancelled_orders': cancelled_orders,
+        'orders_today': orders_today,
+        'orders_yesterday': orders_yesterday,
         
         # Revenue
         'total_revenue': total_revenue,
         'today_revenue': today_revenue,
+        'yesterday_revenue': yesterday_revenue,
+        
+        # Inventory statistics
+        'total_inventory_items': total_inventory_items,
+        'active_inventory': active_inventory,
+        'low_stock_inventory': low_stock_inventory,
+        'near_expiry_items': near_expiry_items,
+        
+        # Delivery statistics
+        'total_deliveries': total_deliveries,
+        'pending_deliveries': pending_deliveries,
+        'in_transit_deliveries': in_transit_deliveries,
+        'delivered_deliveries': delivered_deliveries,
         
         # Category statistics
         'total_categories': total_categories,
@@ -641,21 +885,95 @@ def admin_dashboard(request):
         'ai_service': enhanced_ai_service,
         'total_predictions': total_predictions,
         'dataset_size': dataset_size,
+        'active_models': active_models,
+        'total_models': total_models,
         'critical_alerts': critical_alerts,
+        'high_alerts': high_alerts,
+        'medium_alerts': medium_alerts,
+        'total_active_alerts': total_active_alerts,
+        
+        # Chart data
+        'sales_data': sales_data,
+        'user_registration_data': user_registration_data,
         
         # Recent data
         'recent_products': recent_products,
         'recent_orders': recent_orders,
         'recent_messages': recent_messages,
+        'recent_alerts': recent_alerts,
+        'recent_users': recent_users,
         
         # System info
         'django_version': django_version,
+        'python_version': python_version,
         'debug': debug,
+        'cpu_usage': cpu_usage,
+        'memory_usage': memory_usage,
+        'disk_usage': disk_usage,
+        'server_time': now.strftime("%I:%M %p"),
+        'server_date': now.strftime("%B %d, %Y"),
         
         'site_info': SiteInfo.objects.first(),
     }
     
     return render(request, 'bika/pages/admin/dashboard.html', context)
+
+# Add this to your views.py
+@staff_member_required
+@require_GET
+def dashboard_stats_api(request):
+    """API endpoint for real-time dashboard statistics"""
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    stats = {
+        'success': True,
+        'timestamp': now.isoformat(),
+        'users': {
+            'total': CustomUser.objects.count(),
+            'today_new': CustomUser.objects.filter(date_joined__gte=today_start).count(),
+            'active': CustomUser.objects.filter(last_login__gte=now - timedelta(days=30)).count()
+        },
+        'products': {
+            'total': Product.objects.count(),
+            'active': Product.objects.filter(status='active').count(),
+            'low_stock': Product.objects.filter(
+                stock_quantity__gt=0,
+                stock_quantity__lte=F('low_stock_threshold'),
+                track_inventory=True
+            ).count()
+        },
+        'orders': {
+            'total': Order.objects.count(),
+            'today': Order.objects.filter(created_at__gte=today_start).count(),
+            'pending': Order.objects.filter(status='pending').count()
+        },
+        'revenue': {
+            'total': float(Order.objects.filter(status='delivered')
+                .aggregate(total=Sum('total_amount'))['total'] or 0),
+            'today': float(Order.objects.filter(
+                status='delivered',
+                created_at__gte=today_start
+            ).aggregate(total=Sum('total_amount'))['total'] or 0)
+        },
+        'alerts': {
+            'total': ProductAlert.objects.filter(is_resolved=False).count(),
+            'critical': ProductAlert.objects.filter(
+                is_resolved=False, severity='critical'
+            ).count(),
+            'new': ProductAlert.objects.filter(
+                is_resolved=False,
+                created_at__gte=today_start
+            ).count()
+        },
+        'deliveries': {
+            'total': Delivery.objects.count(),
+            'pending': Delivery.objects.filter(status='pending').count(),
+            'in_transit': Delivery.objects.filter(status='in_transit').count()
+        }
+    }
+    
+    return JsonResponse(stats)
 
 @staff_member_required
 @require_GET
@@ -702,6 +1020,41 @@ def sales_analytics_api(request):
         'success': True,
         'sales_data': sales_data,
         'top_products': list(top_products),
+        'total_days': days
+    })
+
+@staff_member_required
+@require_GET
+def messages_analytics_api(request):
+    """API for message analytics"""
+    days = int(request.GET.get('days', 30))
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=days)
+    
+    message_data = []
+    current_date = start_date
+    
+    while current_date <= end_date:
+        next_date = current_date + timedelta(days=1)
+        daily_messages = ContactMessage.objects.filter(
+            submitted_at__range=[current_date, next_date]
+        ).count()
+        new_daily_messages = ContactMessage.objects.filter(
+            submitted_at__range=[current_date, next_date],
+            status='new'
+        ).count()
+        
+        message_data.append({
+            'date': current_date.strftime('%Y-%m-%d'),
+            'total_messages': daily_messages,
+            'new_messages': new_daily_messages
+        })
+        
+        current_date = next_date
+    
+    return JsonResponse({
+        'success': True,
+        'message_data': message_data,
         'total_days': days
     })
 
@@ -887,50 +1240,66 @@ def ai_alert_dashboard(request):
 @staff_member_required
 @require_POST
 def scan_all_products_for_alerts(request):
-    """Scan all products and generate AI alerts"""
+    """
+    Scan all active products and generate AI alerts/insights.
+    Triggers both fruit quality prediction and general product insights.
+    """
     try:
-        from .models import Product
-        
         # Get all active products
         products = Product.objects.filter(status='active')
         
         results = {
-            'scanned': 0,
-            'predictions': 0,
-            'alerts': 0,
+            'scanned_for_fruit_quality': 0,
+            'fruit_quality_predictions': 0,
+            'fruit_quality_alerts': 0,
+            'scanned_for_insights': 0,
+            'product_insights_generated': 0,
+            'product_insight_alerts': 0,
             'errors': 0
         }
         
         # Scan each product
-        for product in products[:50]:  # Limit to 50 for performance
+        for product in products:  # Iterate through all active products
             try:
-                # Get prediction and alerts
-                result = enhanced_ai_service.predict_and_alert(product.id)
-                
-                if 'error' in result:
+                # --- 1. Fruit Quality Prediction (if applicable) ---
+                if 'fruit' in product.category.name.lower(): # Simple check for fruit products
+                    fruit_result = enhanced_ai_service.predict_and_alert(product.id)
+                    if 'error' in fruit_result:
+                        results['errors'] += 1
+                        logger.error(f"Error fruit quality scanning product {product.id}: {fruit_result['error']}")
+                    else:
+                        results['fruit_quality_predictions'] += 1
+                        results['fruit_quality_alerts'] += len(fruit_result.get('alerts', []))
+                    results['scanned_for_fruit_quality'] += 1
+
+                # --- 2. General Product AI Insights ---
+                insights_result = enhanced_ai_service.predict_product_insights(product.id)
+                if 'error' in insights_result:
                     results['errors'] += 1
+                    logger.error(f"Error general insight scanning product {product.id}: {insights_result['error']}")
                 else:
-                    results['predictions'] += 1
-                    results['alerts'] += len(result.get('alerts', []))
-                
-                results['scanned'] += 1
+                    results['product_insights_generated'] += 1
+                    results['product_insight_alerts'] += insights_result.get('alerts_generated', 0)
+                results['scanned_for_insights'] += 1
                 
             except Exception as e:
                 results['errors'] += 1
-                print(f"Error scanning product {product.id}: {e}")
+                logger.error(f"Unhandled error during scanning for product {product.id}: {e}", exc_info=True)
         
         messages.success(
             request, 
-            f"Scanned {results['scanned']} products. "
-            f"Generated {results['alerts']} new alerts."
+            f"Scan completed. "
+            f"Fruit Quality: {results['scanned_for_fruit_quality']} products processed, {results['fruit_quality_alerts']} alerts. "
+            f"General Insights: {results['scanned_for_insights']} products processed, {results['product_insight_alerts']} alerts. "
+            f"Total errors: {results['errors']}."
         )
         
         return redirect('bika:ai_alert_dashboard')
         
     except Exception as e:
-        messages.error(request, f"Error scanning products: {e}")
+        logger.error(f"Overall error scanning products: {e}", exc_info=True)
+        messages.error(request, f"Overall error scanning products: {e}")
         return redirect('bika:ai_alert_dashboard')
-
 @login_required
 def product_ai_insights(request, product_id):
     """Show AI insights for a specific product"""
@@ -1191,7 +1560,7 @@ def get_product_quality_prediction(request, product_id):
 
 def product_list_view(request):
     """Display all active products with filtering and pagination"""
-    products = Product.objects.filter(status='active').select_related('category', 'vendor')
+    products = Product.objects.filter(status='active', product_type='public').select_related('category', 'vendor')
     
     # Get filter parameters
     category_slug = request.GET.get('category')
@@ -1284,6 +1653,10 @@ def product_detail_view(request, slug):
     product = get_object_or_404(Product.objects.select_related(
         'category', 'vendor'
     ).prefetch_related('images'), slug=slug, status='active')
+
+    # Ensure only public products are viewable
+    if product.product_type != 'public':
+        raise Http404("Product not found")
     
     # Increment view count
     product.views_count += 1
@@ -1450,6 +1823,66 @@ def add_review(request, product_id):
         return redirect('bika:product_detail', slug=product.slug)
     
     return redirect('bika:home')
+
+def product_comparison_view(request):
+    """
+    Displays a product comparison page.
+    Products to compare can be passed via GET parameters (e.g., ?products=id1&products=id2).
+    """
+    product_ids_str = request.GET.getlist('products') # Get multiple product IDs
+    products_to_compare = []
+    
+    # Filter out invalid IDs and fetch products
+    valid_product_ids = []
+    for pid in product_ids_str:
+        try:
+            valid_product_ids.append(int(pid))
+        except ValueError:
+            pass # Ignore non-integer IDs
+            
+    if valid_product_ids:
+        products_to_compare = Product.objects.filter(
+            id__in=valid_product_ids,
+            status='active'
+        ).select_related('category', 'vendor').prefetch_related('images')
+        
+        # Ensure we don't compare more than a reasonable number (e.g., 4)
+        products_to_compare = products_to_compare[:4]
+    
+    # You might want to get all active products for a selection UI in the template
+    all_products = Product.objects.filter(status='active').order_by('name')[:20] # Limit for performance
+
+    context = {
+        'products_to_compare': products_to_compare,
+        'all_products': all_products, # For a selection dropdown/search in the template
+        'site_info': SiteInfo.objects.first(),
+        'title': 'Product Comparison',
+    }
+    return render(request, 'bika/pages/product_comparison.html', context)
+
+@login_required
+@role_required('admin', 'vendor') # Restrict to admin and vendor users
+def register_client(request):
+    """Allow admin/vendor users to register new customer accounts."""
+    if request.method == 'POST':
+        form = CustomerRegistrationForm(request.POST)
+        if form.is_valid():
+            user = form.save(commit=False)
+            user.user_type = 'customer' # Ensure it's a customer
+            user.save()
+            messages.success(request, f'Client {user.username} registered successfully!')
+            return redirect('bika:admin_dashboard') # Redirect to admin dashboard or a client list
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = CustomerRegistrationForm()
+    
+    context = {
+        'form': form,
+        'title': 'Register New Client',
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/admin/register_client.html', context)
 
 # ==================== VENDOR VIEWS ====================
 
@@ -1659,6 +2092,44 @@ def vendor_add_product(request):
     return render(request, 'bika/pages/vendor/add_product.html', context)
 
 @login_required
+@role_required('admin', 'vendor') # Restrict to admin and vendor users
+def add_client_product(request):
+    """Allow admin/vendor users to add products owned by a specific client."""
+    if request.method == 'POST':
+        form = ClientProductCreationForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                product = form.save(commit=False)
+                product.owner = form.cleaned_data['owner'] # The selected client
+                product.vendor = request.user # The admin/vendor user creating the product
+                
+                # Generate SKU if not provided (if Product model doesn't handle this automatically)
+                if not product.sku:
+                    product.sku = f"CPROD{timezone.now().strftime('%Y%m%d%H%M%S')}"
+                
+                # Generate barcode if not provided
+                if not product.barcode:
+                    import random
+                    product.barcode = f"8{random.randint(100000000000, 999999999999)}"
+
+                product.save()
+                messages.success(request, f'Product "{product.name}" added successfully for client {product.owner.username}!')
+                return redirect('bika:vendor_product_list') # Or a client-specific product list
+            except Exception as e:
+                messages.error(request, f'Error saving client product: {str(e)}')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = ClientProductCreationForm()
+    
+    context = {
+        'form': form,
+        'title': 'Add Client Product',
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/admin/add_client_product.html', context)
+
+@login_required
 def vendor_edit_product(request, product_id):
     """Edit existing product"""
     if request.user.is_staff:
@@ -1710,6 +2181,213 @@ def vendor_delete_product(request, product_id):
         return redirect('bika:vendor_product_list')
     
     return redirect('bika:vendor_product_list')
+
+
+# ==================== INVENTORY VIEWS (ROLE-BASED) ====================
+
+@login_required
+@role_required('client')
+def client_inventory(request):
+    """Displays inventory items for the logged-in client."""
+    inventory_items = InventoryItem.objects.filter(client=request.user).order_by('-created_at')
+    
+    # Add filtering
+    query = request.GET.get('q')
+    status_filter = request.GET.get('status')
+    if query:
+        inventory_items = inventory_items.filter(Q(name__icontains=query) | Q(sku__icontains=query))
+    if status_filter:
+        inventory_items = inventory_items.filter(status=status_filter)
+
+    paginator = Paginator(inventory_items, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'inventory_items': page_obj,
+        'total_inventory_items': inventory_items.count(),
+        'near_expiry_items_count': inventory_items.filter(expiry_date__lte=timezone.now() + timedelta(days=30)).count(),
+        'item_statuses': InventoryItem.STATUS_CHOICES,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/client/inventory.html', context)
+
+
+@staff_member_required
+@role_required('storage_staff', 'manager', 'admin')
+def storage_inventory(request):
+    """Displays all inventory items for storage staff."""
+    inventory_items = InventoryItem.objects.select_related('location', 'client').order_by('-created_at')
+    
+    # Add filtering
+    # (Similar filtering logic as manager_inventory can be applied here)
+    
+    paginator = Paginator(inventory_items, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'inventory_items': page_obj,
+        'item_statuses': InventoryItem.STATUS_CHOICES,
+        'storage_locations': StorageLocation.objects.all(),
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/storage/inventory.html', context)
+
+
+@staff_member_required
+@role_required('manager', 'admin')
+def manager_inventory(request):
+    """Displays all inventory items for managers with advanced filtering."""
+    inventory_items = InventoryItem.objects.select_related('location', 'client').order_by('-created_at')
+
+    # Filtering
+    query = request.GET.get('q')
+    status_filter = request.GET.get('status')
+    location_filter = request.GET.get('location')
+    client_filter = request.GET.get('client')
+
+    if query:
+        inventory_items = inventory_items.filter(Q(name__icontains=query) | Q(sku__icontains=query) | Q(client__username__icontains=query))
+    if status_filter:
+        inventory_items = inventory_items.filter(status=status_filter)
+    if location_filter:
+        inventory_items = inventory_items.filter(location_id=location_filter)
+    if client_filter:
+        inventory_items = inventory_items.filter(client_id=client_filter)
+
+    paginator = Paginator(inventory_items, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'inventory_items': page_obj,
+        'item_statuses': InventoryItem.STATUS_CHOICES,
+        'storage_locations': StorageLocation.objects.all(),
+        'clients': CustomUser.objects.filter(user_type='customer'),
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/manager/inventory.html', context)
+
+
+# ==================== INVENTORY VIEWS (ROLE-BASED) ====================
+
+@login_required
+@role_required('client')
+def client_inventory(request):
+    """Displays inventory items for the logged-in client."""
+    inventory_items = InventoryItem.objects.filter(client=request.user).order_by('-created_at')
+    
+    # Add filtering
+    query = request.GET.get('q')
+    status_filter = request.GET.get('status')
+    if query:
+        inventory_items = inventory_items.filter(Q(name__icontains=query) | Q(sku__icontains=query))
+    if status_filter:
+        inventory_items = inventory_items.filter(status=status_filter)
+
+    paginator = Paginator(inventory_items, 10)
+    page_number = request.GET.get('page')
+    try:
+        page_obj = paginator.get_page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.get_page(1)
+    except EmptyPage:
+        page_obj = paginator.get_page(paginator.num_pages)
+
+    context = {
+        'inventory_items': page_obj,
+        'total_inventory_items': inventory_items.count(),
+        'near_expiry_items_count': inventory_items.filter(expiry_date__lte=timezone.now().date() + timedelta(days=30), expiry_date__gte=timezone.now().date()).count(),
+        'expired_items': inventory_items.filter(expiry_date__lt=timezone.now().date()).count(),
+        'item_statuses': InventoryItem.STATUS_CHOICES,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/client/inventory.html', context)
+
+
+@staff_member_required
+@role_required('storage_staff', 'manager', 'admin')
+def storage_inventory(request):
+    """Displays all inventory items for storage staff."""
+    inventory_items = InventoryItem.objects.select_related('location', 'client').order_by('-created_at')
+    
+    # Add filtering
+    query = request.GET.get('q')
+    status_filter = request.GET.get('status')
+    location_filter = request.GET.get('location')
+
+    if query:
+        inventory_items = inventory_items.filter(Q(name__icontains=query) | Q(sku__icontains=query))
+    if status_filter:
+        inventory_items = inventory_items.filter(status=status_filter)
+    if location_filter:
+        inventory_items = inventory_items.filter(location_id=location_filter)
+    
+    paginator = Paginator(inventory_items, 20)
+    page_number = request.GET.get('page')
+    try:
+        page_obj = paginator.get_page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.get_page(1)
+    except EmptyPage:
+        page_obj = paginator.get_page(paginator.num_pages)
+
+    context = {
+        'inventory_items': page_obj,
+        'total_inventory_items': inventory_items.count(),
+        'low_stock_items': inventory_items.filter(quantity__lte=F('low_stock_threshold')).count(),
+        'expired_items': inventory_items.filter(expiry_date__lt=timezone.now().date()).count(),
+        'item_statuses': InventoryItem.STATUS_CHOICES,
+        'storage_locations': StorageLocation.objects.all(),
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/storage/inventory.html', context)
+
+
+@staff_member_required
+@role_required('manager', 'admin')
+def manager_inventory(request):
+    """Displays all inventory items for managers with advanced filtering."""
+    inventory_items = InventoryItem.objects.select_related('location', 'client').order_by('-created_at')
+
+    # Filtering
+    query = request.GET.get('q')
+    status_filter = request.GET.get('status')
+    location_filter = request.GET.get('location')
+    client_filter = request.GET.get('client')
+
+    if query:
+        inventory_items = inventory_items.filter(Q(name__icontains=query) | Q(sku__icontains=query) | Q(client__username__icontains=query))
+    if status_filter:
+        inventory_items = inventory_items.filter(status=status_filter)
+    if location_filter:
+        inventory_items = inventory_items.filter(location_id=location_filter)
+    if client_filter:
+        inventory_items = inventory_items.filter(client_id=client_filter)
+
+    paginator = Paginator(inventory_items, 20)
+    page_number = request.GET.get('page')
+    try:
+        page_obj = paginator.get_page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.get_page(1)
+    except EmptyPage:
+        page_obj = paginator.get_page(paginator.num_pages)
+
+    context = {
+        'inventory_items': page_obj,
+        'total_inventory_items': inventory_items.count(),
+        'low_stock_items': inventory_items.filter(quantity__lte=F('low_stock_threshold')).count(),
+        'expired_items_count': inventory_items.filter(Q(expiry_date__lt=timezone.now().date()) | Q(expiry_date__lte=timezone.now().date() + timedelta(days=30), expiry_date__gte=timezone.now().date())).count(),
+        'total_inventory_value': inventory_items.aggregate(total=Sum('total_value'))['total'] or Decimal('0.00'),
+        'item_statuses': InventoryItem.STATUS_CHOICES,
+        'storage_locations': StorageLocation.objects.all(),
+        'clients': CustomUser.objects.filter(user_type='customer'),
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/manager/inventory.html', context)
+
 
 # ==================== USER PROFILE VIEWS ====================
 
@@ -1788,6 +2466,133 @@ def order_detail(request, order_id):
         'site_info': SiteInfo.objects.first(),
     }
     return render(request, 'bika/pages/user/order_detail.html', context)
+
+@login_required
+def user_address_book_view(request):
+    """Displays the user's saved addresses."""
+    addresses = Address.objects.filter(user=request.user).order_by('-is_default_shipping', '-is_default_billing', '-updated_at')
+    context = {
+        'addresses': addresses,
+        'site_info': SiteInfo.objects.first(),
+        'title': 'My Address Book',
+    }
+    return render(request, 'bika/pages/user/address_book.html', context)
+
+@login_required
+def user_add_edit_address_view(request, address_id=None):
+    """Allows user to add a new address or edit an existing one."""
+    address = None
+    if address_id:
+        address = get_object_or_404(Address, id=address_id, user=request.user)
+        title = "Edit Address"
+    else:
+        title = "Add New Address"
+
+    if request.method == 'POST':
+        form = AddressForm(request.POST, user=request.user, instance=address)
+        if form.is_valid():
+            new_address = form.save(commit=False)
+            new_address.user = request.user
+            new_address.save()
+            messages.success(request, f'Address "{new_address.title}" saved successfully!')
+            return redirect('bika:user_address_book')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = AddressForm(user=request.user, instance=address)
+    
+    context = {
+        'form': form,
+        'title': title,
+        'address': address,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/user/add_edit_address.html', context)
+
+@login_required
+@require_POST
+def user_delete_address_view(request, address_id):
+    """Allows user to delete an address."""
+    address = get_object_or_404(Address, id=address_id, user=request.user)
+    
+    # Prevent deleting the last default address if others exist
+    if address.is_default_shipping and Address.objects.filter(user=request.user, is_default_shipping=True).count() == 1 and Address.objects.filter(user=request.user).count() > 1:
+        messages.error(request, "You cannot delete your last default shipping address. Please set another as default first.")
+        return redirect('bika:user_address_book')
+    if address.is_default_billing and Address.objects.filter(user=request.user, is_default_billing=True).count() == 1 and Address.objects.filter(user=request.user).count() > 1:
+        messages.error(request, "You cannot delete your last default billing address. Please set another as default first.")
+        return redirect('bika:user_address_book')
+
+    address.delete()
+    messages.success(request, 'Address deleted successfully!')
+    return redirect('bika:user_address_book')
+
+
+# ==================== SCANNING VIEWS ====================
+
+@login_required
+def scan_product(request):
+    """
+    Handles scanning a product barcode and displays its details.
+    Distinguishes between public products and private client inventory.
+    """
+    barcode = request.GET.get('barcode') or request.POST.get('barcode')
+    product = None
+    inventory_items = []
+    message = None
+    permission_denied = False
+
+    if barcode:
+        try:
+            # First, try to find a Product by barcode
+            product = Product.objects.get(barcode=barcode)
+
+            if product.product_type == 'public':
+                # For public products, display general product details
+                message = f"Public product found: {product.name} (SKU: {product.sku})"
+                # No further permission check needed beyond public viewability
+            elif product.product_type == 'private':
+                # For private stock template products, find associated InventoryItems
+                # and check permissions
+                associated_items = InventoryItem.objects.filter(product=product)
+
+                if associated_items.exists():
+                    # Filter items based on user's role/ownership
+                    if request.user.is_staff or (hasattr(request.user, 'user_role') and request.user.user_role.role in ['manager', 'storage_staff']):
+                        # Staff/Manager/Storage Staff can see all associated inventory items
+                        inventory_items = associated_items
+                        message = f"Private stock template found: {product.name}. Displaying all associated inventory items."
+                    elif hasattr(request.user, 'user_role') and request.user.user_role.role == 'client':
+                        # Client can only see their own inventory items
+                        inventory_items = associated_items.filter(client=request.user)
+                        if inventory_items.exists():
+                            message = f"Your private stock item found: {product.name}."
+                        else:
+                            permission_denied = True
+                            message = "Access denied. You do not own this private stock item."
+                    else:
+                        permission_denied = True
+                        message = "Access denied. This is a private stock item."
+                else:
+                    message = f"Private stock template found: {product.name}, but no associated inventory items."
+            else:
+                message = "Product type not recognized."
+
+        except Product.DoesNotExist:
+            message = f"No product found with barcode: {barcode}"
+        except Exception as e:
+            message = f"An error occurred: {e}"
+
+    context = {
+        'barcode': barcode,
+        'product': product,
+        'inventory_items': inventory_items,
+        'message': message,
+        'permission_denied': permission_denied,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/scan_product.html', context)
+
 
 # ==================== WISHLIST VIEWS ====================
 
@@ -1929,11 +2734,17 @@ def add_to_cart(request, product_id):
     
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         cart_count = Cart.objects.filter(user=request.user).count()
+        
+        # After adding to cart, re-fetch product to get updated stock quantity
+        product.refresh_from_db() 
+        
         return JsonResponse({
             'success': True,
             'message': 'Product added to cart!',
             'cart_count': cart_count,
-            'created': created
+            'created': created,
+            'new_stock_quantity': product.stock_quantity, # Return updated stock
+            'allow_backorders': product.allow_backorders # Return allow_backorders status
         })
     
     messages.success(request, 'Product added to cart!')
@@ -2005,7 +2816,610 @@ def update_cart(request, product_id):
                 'total_amount': '0.00',
                 'cart_count': 0
             })
+
+@login_required
+@require_POST
+@transaction.atomic
+def place_order(request):
+    """Place order from cart or direct 'Buy Now' purchase"""
+    from decimal import Decimal
+    
+    # Get form data
+    shipping_address_id = request.POST.get('shipping_address')
+    billing_address_id = request.POST.get('billing_address')
+    payment_method_code = request.POST.get('payment_method')
+    mobile_money_phone = request.POST.get('mobile_money_phone', '') # NEW: Get mobile money phone
+    
+    # Get addresses
+    shipping_address = get_object_or_404(Address, id=shipping_address_id, user=request.user)
+    billing_address = get_object_or_404(Address, id=billing_address_id, user=request.user)
+    
+    # Check for direct buy product in session
+    direct_buy_product_id = request.session.get('direct_buy_product_id')
+    direct_buy_quantity = request.session.get('direct_buy_quantity')
+
+    order_items_data = []
+    total_subtotal = Decimal('0.00')
+
+    if direct_buy_product_id and direct_buy_quantity:
+        product = get_object_or_404(Product, id=direct_buy_product_id)
+        quantity = direct_buy_quantity
+
+        # Final stock check for direct buy
+        if product.track_inventory and product.stock_quantity < quantity:
+            messages.error(request, f'Insufficient stock for "{product.name}". Only {product.stock_quantity} available.')
+            # Clear direct buy session data
+            if 'direct_buy_product_id' in request.session:
+                del request.session['direct_buy_product_id']
+            if 'direct_buy_quantity' in request.session:
+                del request.session['direct_buy_quantity']
+            return JsonResponse({'success': False, 'message': messages.get_messages(request)._loaded_messages[-1].message}) # Return JsonResponse for AJAX
+
+        order_items_data.append({
+            'product': product,
+            'quantity': quantity,
+            'price': product.price
+        })
+        total_subtotal = product.price * quantity
+
+    else: # Cart-based purchase
+        cart_items = Cart.objects.filter(user=request.user).select_related('product')
         
+        if not cart_items:
+            messages.error(request, "Your cart is empty. Please add items before placing an order.")
+            return JsonResponse({'success': False, 'message': messages.get_messages(request)._loaded_messages[-1].message}) # Return JsonResponse for AJAX
+        
+        # Validate stock again (critical for race conditions)
+        for item in cart_items:
+            if item.product.track_inventory and item.product.stock_quantity < item.quantity:
+                messages.error(
+                    request, 
+                    f'Insufficient stock for "{item.product.name}". Only {item.product.stock_quantity} available.'
+                )
+                return JsonResponse({'success': False, 'message': messages.get_messages(request)._loaded_messages[-1].message}) # Return JsonResponse for AJAX
+            order_items_data.append({
+                'product': item.product,
+                'quantity': item.quantity,
+                'price': item.product.price
+            })
+        total_subtotal = sum(item.product.price * item.quantity for item in cart_items)
+
+    # Calculate totals
+    bika_settings = getattr(settings, 'BIKA_SETTINGS', {})
+    shipping_cost_setting = Decimal(bika_settings.get('shipping_cost', '5000'))
+    tax_rate_setting = Decimal(bika_settings.get('tax_rate', '0.18'))
+    
+    shipping_cost = shipping_cost_setting
+    tax_amount = total_subtotal * tax_rate_setting
+    total_amount = total_subtotal + tax_amount + shipping_cost
+    
+    try:
+        # Helper function to revert stock
+        def _revert_stock_for_order(order_obj):
+            for order_item in order_obj.items.all():
+                product = order_item.product
+                if product.track_inventory:
+                    product = Product.objects.select_for_update().get(pk=product.pk)
+                    product.stock_quantity += order_item.quantity
+                    product.save()
+                    logger.info(f"Reverted {order_item.quantity} of {product.name} for Order {order_obj.order_number}")
+
+        # Create the order
+        order = Order.objects.create(
+            user=request.user,
+            total_amount=total_amount,
+            shipping_address=f"{shipping_address.street_address}, {shipping_address.city}, {shipping_address.state}, {shipping_address.postal_code}, {shipping_address.country}",
+            billing_address=f"{billing_address.street_address}, {billing_address.city}, {billing_address.state}, {billing_address.postal_code}, {billing_address.country}",
+            payment_method=payment_method_code, 
+            status='pending', # Pending payment initially
+        )
+        
+        # Create order items and deduct stock
+        for item_data in order_items_data:
+            product = item_data['product']
+            quantity = item_data['quantity']
+            
+            # Use select_for_update to prevent race conditions for stock deduction
+            # Lock the product row to ensure exclusive access during quantity update
+            product = Product.objects.select_for_update().get(pk=product.pk) 
+            
+            if product.track_inventory:
+                # Re-check stock just in case it changed between initial checkout and now
+                if product.stock_quantity < quantity:
+                    # If stock is insufficient, raise an error to rollback the transaction
+                    raise ValidationError(f'Insufficient stock for "{product.name}". Only {product.stock_quantity} available.')
+                
+                product.stock_quantity -= quantity
+                product.save()
+
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=quantity,
+                price=price,
+            )
+        
+        # Clear the cart if it was a cart-based purchase
+        if not (direct_buy_product_id and direct_buy_quantity):
+            Cart.objects.filter(user=request.user).delete()
+        
+        # Clear direct buy session data if it was a direct purchase
+        if 'direct_buy_product_id' in request.session:
+            del request.session['direct_buy_product_id']
+        if 'direct_buy_quantity' in request.session:
+            del request.session['direct_buy_quantity']
+
+        # NEW: Create Payment object before initiating payment
+        payment = Payment.objects.create(
+            order=order,
+            payment_method=payment_method_code,
+            amount=total_amount,
+            currency=billing_address.country, # Use billing country for currency or a site-wide default
+            status='pending',
+            mobile_money_phone=mobile_money_phone if 'mtn' in payment_method_code or 'airtel' in payment_method_code or 'tigo' in payment_method_code or 'halotel' in payment_method_code else ''
+        )
+
+        if PAYMENT_SERVICES_AVAILABLE:
+            try:
+                payment_gateway_response = payment_service.initiate_payment(payment) # Pass Payment object
+                
+                if payment_gateway_response.get('success'):
+                    # Handle different types of responses
+                    if payment_gateway_response.get('redirect_url'):
+                        # For payments that require redirection (e.g., PayPal, 3DS cards)
+                        return JsonResponse({
+                            'success': True,
+                            'redirect_url': payment_gateway_response['redirect_url']
+                        })
+                    elif payment_gateway_response.get('client_secret'):
+                        # For Stripe with client_secret for 3DS or other actions
+                        return JsonResponse({
+                            'success': True,
+                            'payment_id': payment.id,
+                            'client_secret': payment_gateway_response['client_secret'],
+                            'requires_action': True # Indicate client-side action needed
+                        })
+                    else:
+                        # For mobile money or direct success
+                        messages.success(request, payment_gateway_response.get('message', 'Payment initiated successfully!'))
+                        return JsonResponse({
+                            'success': True,
+                            'payment_id': payment.id, # Pass payment ID for polling
+                            'order_id': order.id,
+                            'message': payment_gateway_response.get('message', 'Payment initiated successfully!')
+                        })
+                else:
+                    messages.error(request, payment_gateway_response.get('error', 'Payment initiation failed.'))
+                    order.status = 'failed'
+                    order.save()
+                    payment.status = 'failed'
+                    payment.save()
+                    _revert_stock_for_order(order) # NEW: Revert stock on payment initiation failure
+                    return JsonResponse({'success': False, 'message': messages.get_messages(request)._loaded_messages[-1].message})
+
+            except Exception as e:
+                logger.error(f"Error initiating payment for Order {order.id}: {e}", exc_info=True)
+                messages.error(request, 'Failed to initiate payment. Please try again.')
+                order.status = 'failed'
+                order.save()
+                payment.status = 'failed'
+                payment.save()
+                _revert_stock_for_order(order) # NEW: Revert stock on payment initiation failure
+                return JsonResponse({'success': False, 'message': messages.get_messages(request)._loaded_messages[-1].message})
+        else:
+            # Fallback for when PAYMENT_SERVICES_AVAILABLE is False (simulated success)
+            messages.success(request, 'Payment simulated successfully!')
+            order.status = 'confirmed'
+            order.save()
+            payment.status = 'completed'
+            payment.paid_at = timezone.now()
+            payment.save()
+            return JsonResponse({
+                'success': True,
+                'payment_id': payment.id,
+                'order_id': order.id,
+                'message': 'Simulated payment successful!'
+            })
+
+    except Exception as e:
+        logger.error(f"Error placing order: {e}", exc_info=True)
+        messages.error(request, 'An error occurred while placing your order. Please try again.')
+        # NEW: Revert stock if any error occurs during order placement before payment initiation
+        if 'order' in locals() and order.id: # Ensure order object exists and has been saved
+             _revert_stock_for_order(order)
+        return JsonResponse({'success': False, 'message': messages.get_messages(request)._loaded_messages[-1].message})
+
+@login_required
+@require_POST
+@csrf_exempt
+def api_record_inventory_movement(request):
+    """API endpoint to record inventory movement (check-in/out/transfer)"""
+    try:
+        # Check permissions (only staff, managers, storage staff)
+        if not (request.user.is_staff or 
+                (hasattr(request.user, 'user_role') and 
+                 request.user.user_role.role in ['manager', 'admin', 'storage_staff'])):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        data = json.loads(request.body)
+        
+        movement_type = data.get('movement_type')  # 'check_in', 'check_out', 'transfer'
+        sku = data.get('sku')
+        quantity = int(data.get('quantity', 1))
+        from_location_id = data.get('from_location_id')
+        to_location_id = data.get('to_location_id')
+        notes = data.get('notes', '')
+        
+        if not sku or not movement_type:
+            return JsonResponse({'success': False, 'error': 'SKU and movement type are required'}, status=400)
+        
+        # Find the inventory item
+        try:
+            item = InventoryItem.objects.get(sku=sku)
+        except InventoryItem.DoesNotExist:
+            return JsonResponse({'success': False, 'error': f'Item with SKU {sku} not found'}, status=404)
+        
+        # Check permissions for this item's location
+        user_locations = request.user.assigned_locations.all() if hasattr(request.user, 'assigned_locations') else []
+        
+        if movement_type == 'check_in':
+            if not to_location_id:
+                return JsonResponse({'success': False, 'error': 'Destination location required for check-in'}, status=400)
+            
+            try:
+                to_location = StorageLocation.objects.get(id=to_location_id)
+            except StorageLocation.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Destination location not found'}, status=404)
+            
+            # Check if user has access to this location
+            if user_locations and to_location not in user_locations:
+                return JsonResponse({'success': False, 'error': 'You do not have access to this location'}, status=403)
+            
+            # Record the check-in
+            old_quantity = item.quantity
+            item.quantity += quantity
+            item.location = to_location
+            item.last_checked = timezone.now()
+            item.checked_by = request.user
+            item.save()
+            
+            # Create history record
+            history = InventoryHistory.objects.create(
+                item=item,
+                action='check_in',
+                user=request.user,
+                previous_quantity=old_quantity,
+                new_quantity=item.quantity,
+                previous_location=item.location,
+                new_location=to_location,
+                notes=notes
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Checked in {quantity} units of {item.name}',
+                'item_id': item.id,
+                'new_quantity': item.quantity,
+                'history_id': history.id
+            })
+            
+        elif movement_type == 'check_out':
+            # Check if enough quantity
+            if item.quantity < quantity:
+                return JsonResponse({
+                    'success': False, 
+                    'error': f'Not enough stock. Available: {item.quantity}'
+                }, status=400)
+            
+            # Check if user has access to this location
+            if user_locations and item.location not in user_locations:
+                return JsonResponse({'success': False, 'error': 'You do not have access to this location'}, status=403)
+            
+            # Record the check-out
+            old_quantity = item.quantity
+            item.quantity -= quantity
+            item.last_checked = timezone.now()
+            item.checked_by = request.user
+            
+            # If quantity becomes 0, mark as reserved
+            if item.quantity == 0:
+                item.status = 'reserved'
+            
+            item.save()
+            
+            # Create history record
+            history = InventoryHistory.objects.create(
+                item=item,
+                action='check_out',
+                user=request.user,
+                previous_quantity=old_quantity,
+                new_quantity=item.quantity,
+                notes=notes
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Checked out {quantity} units of {item.name}',
+                'item_id': item.id,
+                'new_quantity': item.quantity,
+                'history_id': history.id
+            })
+            
+        elif movement_type == 'transfer':
+            if not from_location_id or not to_location_id:
+                return JsonResponse({'success': False, 'error': 'Both source and destination locations required for transfer'}, status=400)
+            
+            try:
+                from_location = StorageLocation.objects.get(id=from_location_id)
+                to_location = StorageLocation.objects.get(id=to_location_id)
+            except StorageLocation.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'One or both locations not found'}, status=404)
+            
+            # Check if user has access to both locations
+            if user_locations:
+                if from_location not in user_locations or to_location not in user_locations:
+                    return JsonResponse({'success': False, 'error': 'You do not have access to one or both locations'}, status=403)
+            
+            # Check if item is in source location
+            if item.location != from_location:
+                return JsonResponse({'success': False, 'error': f'Item is not in {from_location.name}'}, status=400)
+            
+            # Check if enough quantity
+            if item.quantity < quantity:
+                return JsonResponse({
+                    'success': False, 
+                    'error': f'Not enough stock. Available: {item.quantity}'
+                }, status=400)
+            
+            # For a full transfer, move all quantity
+            if quantity == item.quantity:
+                old_quantity = item.quantity
+                item.location = to_location
+                # Quantity stays the same, just location changes
+                item.last_checked = timezone.now()
+                item.checked_by = request.user
+                item.save()
+                
+                history = InventoryHistory.objects.create(
+                    item=item,
+                    action='transfer',
+                    user=request.user,
+                    previous_quantity=old_quantity,
+                    new_quantity=item.quantity,
+                    previous_location=from_location,
+                    new_location=to_location,
+                    notes=notes
+                )
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Transferred {quantity} units of {item.name} from {from_location.name} to {to_location.name}',
+                    'item_id': item.id,
+                    'history_id': history.id
+                })
+            else:
+                # For partial transfers, you might need to split the item
+                # This is more complex - for now, return error
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Partial transfers not supported. Use full quantity or check-out/check-in separately.'
+                }, status=400)
+        else:
+            return JsonResponse({'success': False, 'error': f'Invalid movement type: {movement_type}'}, status=400)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error recording inventory movement: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+@login_required
+@require_GET
+def api_get_warehouse_layout(request, location_id):
+    """API endpoint to get warehouse layout information"""
+    try:
+        # Check permissions
+        if not (request.user.is_staff or 
+                (hasattr(request.user, 'user_role') and 
+                 request.user.user_role.role in ['manager', 'admin', 'storage_staff'])):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        # Get the storage location
+        location = get_object_or_404(StorageLocation, id=location_id)
+        
+        # Check if user has access to this location
+        user_locations = request.user.assigned_locations.all() if hasattr(request.user, 'assigned_locations') else []
+        if user_locations and location not in user_locations and not request.user.is_staff:
+            return JsonResponse({'success': False, 'error': 'You do not have access to this location'}, status=403)
+        
+        # Get all inventory items in this location
+        items = InventoryItem.objects.filter(
+            location=location,
+            is_active=True
+        ).select_related('product', 'category')
+        
+        # Get zones/sections if your model supports it
+        # You might need to create a Zone model or add zone field to StorageLocation
+        zones = []
+        if hasattr(location, 'zones'):
+            zones = location.zones.all()
+        
+        # Prepare layout data
+        layout_data = {
+            'location': {
+                'id': location.id,
+                'name': location.name,
+                'code': location.code,
+                'type': location.location_type if hasattr(location, 'location_type') else 'warehouse',
+                'capacity': float(location.capacity) if location.capacity else None,
+                'current_occupancy': float(location.current_occupancy) if location.current_occupancy else 0,
+                'occupancy_percentage': location.occupancy_percentage if hasattr(location, 'occupancy_percentage') else 0,
+                'temperature': float(location.temperature) if hasattr(location, 'temperature') and location.temperature else None,
+                'humidity': float(location.humidity) if hasattr(location, 'humidity') and location.humidity else None,
+                'address': location.address if hasattr(location, 'address') else None,
+                'description': location.description,
+            },
+            'items': [],
+            'zones': [],
+            'stats': {
+                'total_items': items.count(),
+                'total_value': float(items.aggregate(total=Sum('total_value'))['total'] or 0),
+                'categories': items.values('category__name').annotate(count=Count('id')).order_by('-count'),
+                'low_stock_items': items.filter(quantity__lte=F('low_stock_threshold')).count(),
+                'expiring_soon': items.filter(
+                    expiry_date__lte=timezone.now().date() + timedelta(days=7),
+                    expiry_date__gte=timezone.now().date()
+                ).count(),
+            }
+        }
+        
+        # Add items with their positions (if you have position data)
+        for item in items:
+            item_data = {
+                'id': item.id,
+                'name': item.name,
+                'sku': item.sku,
+                'quantity': item.quantity,
+                'unit': item.unit if hasattr(item, 'unit') else 'units',
+                'status': item.status,
+                'category': item.category.name if item.category else None,
+                'product_name': item.product.name if item.product else None,
+                'expiry_date': item.expiry_date.isoformat() if item.expiry_date else None,
+                'total_value': float(item.total_value) if item.total_value else 0,
+            }
+            
+            # Add position data if available
+            if hasattr(item, 'position_x') and item.position_x:
+                item_data['position_x'] = float(item.position_x)
+            if hasattr(item, 'position_y') and item.position_y:
+                item_data['position_y'] = float(item.position_y)
+            if hasattr(item, 'position_z') and item.position_z:
+                item_data['position_z'] = float(item.position_z)
+            if hasattr(item, 'rack') and item.rack:
+                item_data['rack'] = item.rack
+            if hasattr(item, 'shelf') and item.shelf:
+                item_data['shelf'] = item.shelf
+            if hasattr(item, 'bin') and item.bin:
+                item_data['bin'] = item.bin
+            
+            layout_data['items'].append(item_data)
+        
+        # Add zone information if available
+        if zones:
+            for zone in zones:
+                zone_data = {
+                    'id': zone.id,
+                    'name': zone.name,
+                    'code': zone.code if hasattr(zone, 'code') else None,
+                    'type': zone.zone_type if hasattr(zone, 'zone_type') else 'general',
+                    'capacity': float(zone.capacity) if zone.capacity else None,
+                    'current_occupancy': float(zone.current_occupancy) if zone.current_occupancy else 0,
+                    'temperature': float(zone.temperature) if hasattr(zone, 'temperature') and zone.temperature else None,
+                    'humidity': float(zone.humidity) if hasattr(zone, 'humidity') and zone.humidity else None,
+                    'items_count': InventoryItem.objects.filter(location=location, zone=zone).count() if hasattr(InventoryItem, 'zone') else 0,
+                }
+                layout_data['zones'].append(zone_data)
+        
+        # Add recent activity
+        recent_activity = InventoryHistory.objects.filter(
+            item__location=location
+        ).select_related('item', 'user').order_by('-timestamp')[:10]
+        
+        layout_data['recent_activity'] = []
+        for activity in recent_activity:
+            layout_data['recent_activity'].append({
+                'id': activity.id,
+                'action': activity.action,
+                'item_name': activity.item.name,
+                'item_sku': activity.item.sku,
+                'user': activity.user.username if activity.user else 'System',
+                'timestamp': activity.timestamp.isoformat(),
+                'quantity_change': activity.new_quantity - activity.previous_quantity if activity.previous_quantity and activity.new_quantity else None,
+                'notes': activity.notes
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'layout': layout_data
+        })
+        
+    except StorageLocation.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Location not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error getting warehouse layout: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        
+@login_required
+@require_POST
+@csrf_exempt
+def api_update_delivery_status(request, delivery_id):
+    """API endpoint to update delivery status"""
+    try:
+        # Check permissions (only managers and admins)
+        if not (request.user.is_staff or (hasattr(request.user, 'user_role') and request.user.user_role.role in ['manager', 'admin'])):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        delivery = get_object_or_404(Delivery, id=delivery_id)
+        data = json.loads(request.body)
+        
+        new_status = data.get('status')
+        notes = data.get('notes', '')
+        
+        if new_status and new_status in dict(Delivery.STATUS_CHOICES):
+            # Update status
+            old_status = delivery.status
+            delivery.status = new_status
+            delivery.status_changed_at = timezone.now()
+            delivery.status_changed_by = request.user
+            delivery.save()
+            
+            # Record status change
+            DeliveryStatusHistory.objects.create(
+                delivery=delivery,
+                from_status=old_status,
+                to_status=new_status,
+                changed_by=request.user,
+                notes=notes
+            )
+            
+            # Send notification to client
+            Notification.objects.create(
+                user=delivery.client,
+                title=f"Delivery Status Updated",
+                message=f"Your delivery #{delivery.delivery_number} status has been updated to {delivery.get_status_display()}.",
+                notification_type='order_update',
+                related_object_type='delivery',
+                related_object_id=delivery.id
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Delivery status updated to {delivery.get_status_display()}',
+                'delivery_id': delivery.id,
+                'new_status': new_status
+            })
+        else:
+            return JsonResponse({'success': False, 'error': 'Invalid status'}, status=400)
+            
+    except Delivery.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Delivery not found'}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error updating delivery status: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+@login_required
+def order_confirmation(request, order_id):
+    """
+    Displays a confirmation page after a successful order.
+    """
+    order = get_object_or_404(Order, id=order_id, user=request.user)
+    context = {
+        'order': order,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/user/order_confirmation.html', context)
+
+
 
 @login_required
 @require_POST
@@ -2056,168 +3470,148 @@ def clear_cart(request):
 @login_required
 def checkout(request):
     """Checkout page"""
-    from decimal import Decimal  # ADD THIS IMPORT
+    from decimal import Decimal
     
-    cart_items = Cart.objects.filter(user=request.user).select_related('product')
-    
-    if not cart_items:
-        messages.error(request, "Your cart is empty!")
-        return redirect('bika:cart')
-    
-    # Check stock for all items
-    for item in cart_items:
-        if item.product.track_inventory and item.product.stock_quantity < item.quantity:
-            messages.error(
-                request, 
-                f'Only {item.product.stock_quantity} items available for {item.product.name}!'
-            )
+    # Check for direct buy product in session
+    direct_buy_product_id = request.session.get('direct_buy_product_id')
+    direct_buy_quantity = request.session.get('direct_buy_quantity')
+
+    items_to_checkout = []
+    is_direct_buy = False
+
+    if direct_buy_product_id and direct_buy_quantity:
+        product = get_object_or_404(Product, id=direct_buy_product_id)
+        # Verify stock again
+        if product.track_inventory and product.stock_quantity < direct_buy_quantity:
+            messages.error(request, f'Only {product.stock_quantity} of "{product.name}" are available in stock.')
+            # Clear direct buy session data
+            if 'direct_buy_product_id' in request.session:
+                del request.session['direct_buy_product_id']
+            if 'direct_buy_quantity' in request.session:
+                del request.session['direct_buy_quantity']
+            return redirect('bika:product_detail', slug=product.slug)
+
+        # Create a mock cart item structure for template compatibility
+        mock_item_subtotal = product.price * direct_buy_quantity
+        items_to_checkout.append({
+            'product': product,
+            'quantity': direct_buy_quantity,
+            'total_price_calculated': mock_item_subtotal
+        })
+        is_direct_buy = True
+        subtotal = mock_item_subtotal
+        # messages.info(request, "You are proceeding with a direct purchase.")
+
+    else: # Normal cart checkout
+        cart_items = Cart.objects.filter(user=request.user).select_related('product')
+        
+        if not cart_items:
+            messages.error(request, "Your cart is empty!")
             return redirect('bika:cart')
-    
+        
+        # Check stock for all cart items
+        for item in cart_items:
+            if item.product.track_inventory and item.product.stock_quantity < item.quantity:
+                messages.error(
+                    request, 
+                    f'Only {item.product.stock_quantity} items available for {item.product.name}!'
+                )
+                return redirect('bika:cart')
+        
+        # Prepare cart items with total_price for template
+        for item in cart_items:
+            item_price = Decimal(str(item.product.price))
+            item_quantity = Decimal(str(item.quantity))
+            item_subtotal = item_price * item_quantity
+            item.total_price_calculated = item_subtotal
+            items_to_checkout.append(item)
+        
+        subtotal = sum(item.total_price_calculated for item in items_to_checkout)
+
     # Calculate totals - USE DECIMAL
-    subtotal = sum(item.total_price for item in cart_items)
-    tax_rate = Decimal('0.18')  # CHANGE TO DECIMAL
-    tax_amount = subtotal * tax_rate
-    shipping_cost = Decimal('5000')  # CHANGE TO DECIMAL
+    # Ensure BIKA_SETTINGS exist and provide defaults
+    bika_settings = getattr(settings, 'BIKA_SETTINGS', {})
+    shipping_cost_setting = Decimal(bika_settings.get('shipping_cost', '5000')) # Default shipping
+    tax_rate_setting = Decimal(bika_settings.get('tax_rate', '0.18')) # Default tax rate
+
+    tax_amount = subtotal * tax_rate_setting
+    shipping_cost = shipping_cost_setting
     total_amount = subtotal + tax_amount + shipping_cost
     
-    # Get user's default addresses
-    user = request.user
-    shipping_address = user.address
-    billing_address = user.address
+    # Get user's default addresses or first available
+    user_addresses = Address.objects.filter(user=request.user).order_by('-is_default_shipping', '-is_default_billing')
+    shipping_address = user_addresses.filter(is_default_shipping=True).first() or user_addresses.first()
+    billing_address = user_addresses.filter(is_default_billing=True).first() or user_addresses.first()
+
+    # Get available payment methods dynamically
+    # Determine user's country and currency for filtering
+    user_country = request.session.get('user_country', 'TZ') # Default to TZ
+    user_currency = request.session.get('user_currency', 'TZS') # Default to TZS
     
-    # Get available payment methods
-    payment_methods = [
-        {'value': 'mpesa', 'name': 'M-Pesa', 'icon': 'fas fa-mobile-alt'},
-        {'value': 'airtel_tz', 'name': 'Airtel Money', 'icon': 'fas fa-wifi'},
-        {'value': 'tigo_tz', 'name': 'Tigo Pesa', 'icon': 'fas fa-sim-card'},
-        {'value': 'visa', 'name': 'Visa Card', 'icon': 'fab fa-cc-visa'},
-        {'value': 'mastercard', 'name': 'MasterCard', 'icon': 'fab fa-cc-mastercard'},
-        {'value': 'paypal', 'name': 'PayPal', 'icon': 'fab fa-paypal'},
-    ]
+    # Use the payment_service to get available methods
+    available_gateways_info = payment_service.get_available_payment_methods(
+        country=user_country, 
+        currency=user_currency, 
+        amount=total_amount # Pass total amount to calculate fees
+    )
     
+    # Map to template-friendly format and add icons/colors
+    payment_methods_for_template = []
+    method_icons = {
+        'mpesa_tz': {'icon': 'fas fa-mobile-alt', 'color': 'success'},
+        'tigo_tz': {'icon': 'fas fa-sim-card', 'color': 'info'},
+        'airtel_tz': {'icon': 'fas fa-wifi', 'color': 'danger'},
+        'halotel_tz': {'icon': 'fas fa-mobile-alt', 'color': 'danger'}, # Re-using Airtel icon/color
+        'mtn_rw': {'icon': 'fas fa-mobile-alt', 'color': 'warning'},
+        'mtn_ug': {'icon': 'fas fa-mobile-alt', 'color': 'warning'},
+        'airtel_rw': {'icon': 'fas fa-wifi', 'color': 'danger'},
+        'airtel_ug': {'icon': 'fas fa-mobile-alt', 'color': 'danger'},
+        'stripe': {'icon': 'fab fa-cc-stripe', 'color': 'primary'}, # Generic card icon for Stripe
+        'paypal': {'icon': 'fab fa-paypal', 'color': 'info'},
+    }
+
+    for gateway_info in available_gateways_info:
+        gateway_name = gateway_info['gateway']
+        icon_color = method_icons.get(gateway_name, {'icon': 'fas fa-wallet', 'color': 'secondary'})
+        
+        payment_methods_for_template.append({
+            'gateway': gateway_name,
+            'name': gateway_info['display_name'],
+            'icon': icon_color['icon'],
+            'color': icon_color['color'],
+            'fees': gateway_info['fees'],
+            'environment': gateway_info['environment']
+        })
+
     context = {
-        'cart_items': cart_items,
-        'subtotal': float(subtotal),  # CONVERT TO FLOAT
-        'tax_amount': float(tax_amount),  # CONVERT TO FLOAT
-        'shipping_cost': float(shipping_cost),  # CONVERT TO FLOAT
-        'total_amount': float(total_amount),  # CONVERT TO FLOAT
+        'cart_items': items_to_checkout, # Renamed for clarity in template
+        'is_direct_buy': is_direct_buy,
+        'subtotal': float(subtotal),
+        'tax_amount': float(tax_amount),
+        'shipping_cost': float(shipping_cost),
+        'total_amount': float(total_amount),
         'shipping_address': shipping_address,
         'billing_address': billing_address,
-        'payment_methods': payment_methods,
-        'tax_rate': float(tax_rate * Decimal('100')),  # For display
+        'available_methods': payment_methods_for_template, # Changed context variable name
+        'tax_rate_percentage': float(tax_rate_setting * Decimal('100')), # For display
         'site_info': SiteInfo.objects.first(),
+        'user_addresses': user_addresses, # Pass all addresses for selection
+        'STRIPE_PUBLISHABLE_KEY': settings.STRIPE_PUBLISHABLE_KEY if hasattr(settings, 'STRIPE_PUBLISHABLE_KEY') else '',
+        # Add user_country to context for JS
+        'user_country': user_country, 
     }
     
     return render(request, 'bika/pages/checkout.html', context)
 
-@login_required
-@require_POST
-@login_required
-@require_POST
-def place_order(request):
-    """Place order and process payment"""
-    try:
-        with transaction.atomic():
-            from decimal import Decimal  # ADD THIS IMPORT
+
             
-            # Get cart items
-            cart_items = Cart.objects.filter(user=request.user).select_related('product')
-            
-            if not cart_items:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Your cart is empty!'
-                })
-            
-            # Validate stock
-            for item in cart_items:
-                if item.product.track_inventory and item.product.stock_quantity < item.quantity:
-                    return JsonResponse({
-                        'success': False,
-                        'message': f'Insufficient stock for {item.product.name}'
-                    })
-            
-            # Calculate totals - USE DECIMAL
-            subtotal = sum(item.total_price for item in cart_items)
-            tax_rate = Decimal('0.18')  # CHANGE TO DECIMAL
-            tax_amount = subtotal * tax_rate
-            shipping_cost = Decimal('5000')  # CHANGE TO DECIMAL
-            total_amount = subtotal + tax_amount + shipping_cost
-            
-            # Get form data
-            shipping_address = request.POST.get('shipping_address', '')
-            billing_address = request.POST.get('billing_address', '')
-            payment_method = request.POST.get('payment_method', '')
-            phone_number = request.POST.get('phone_number', '')
-            
-            if not shipping_address or not billing_address:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Please provide shipping and billing addresses'
-                })
-            
-            if not payment_method:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Please select a payment method'
-                })
-            
-            # Create order
-            order = Order.objects.create(
-                user=request.user,
-                total_amount=total_amount,  # This should already be Decimal
-                shipping_address=shipping_address,
-                billing_address=billing_address,
-                status='pending'
-            )
-            
-            # Create order items and update stock
-            for cart_item in cart_items:
-                OrderItem.objects.create(
-                    order=order,
-                    product=cart_item.product,
-                    quantity=cart_item.quantity,
-                    price=cart_item.product.price
-                )
-                
-                # Update product stock
-                if cart_item.product.track_inventory:
-                    cart_item.product.stock_quantity -= cart_item.quantity
-                    cart_item.product.save()
-            
-            # Create initial payment record
-            payment = Payment.objects.create(
-                order=order,
-                payment_method=payment_method,
-                amount=total_amount,  # This should already be Decimal
-                currency='TZS',
-                status='pending'
-            )
-            
-            # If mobile money, save phone number
-            if payment_method in ['mpesa', 'airtel_tz', 'tigo_tz'] and phone_number:
-                payment.mobile_money_phone = phone_number
-                payment.save()
-            
-            # Clear cart
-            cart_items.delete()
-            
-            # Return success with order details
-            return JsonResponse({
-                'success': True,
-                'order_id': order.id,
-                'order_number': order.order_number,
-                'payment_id': payment.id,
-                'redirect_url': reverse('bika:payment_processing', args=[payment.id]),
-                'total_amount': float(total_amount)  # CONVERT TO FLOAT FOR JSON
-            })
-            
-    except Exception as e:
-        logger.error(f"Error placing order: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': 'An error occurred while placing your order. Please try again.'
-        })
+    # Create order
+    # Duplicate/partial order-placement block removed — order creation/processing is handled above.
+    # This placeholder prevents a mismatched try/except and fixes unexpected indentation/syntax errors.
+    return JsonResponse({
+        'success': False,
+        'message': 'An error occurred while placing your order. Please try again.'
+    })
     
 @login_required
 def payment_processing(request, payment_id):
@@ -2772,6 +4166,33 @@ def receive_sensor_data(request):
         logger.error(f"Error receiving sensor data: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+@login_required
+@require_GET
+def api_delivery_status(request, delivery_id):
+    """API endpoint to get the latest status of a delivery."""
+    try:
+        delivery = get_object_or_404(Delivery, id=delivery_id, client=request.user)
+        latest_status_history = DeliveryStatusHistory.objects.filter(delivery=delivery).order_by('-timestamp').first()
+
+        status_data = {
+            'delivery_id': delivery.id,
+            'delivery_number': delivery.delivery_number,
+            'current_status': delivery.get_status_display(),
+            'current_status_code': delivery.status,
+            'updated_at': delivery.status_changed_at.isoformat(),
+            'is_delivered': delivery.status == 'delivered',
+            'latest_update_message': latest_status_history.notes if latest_status_history else None,
+            'latest_update_location': latest_status_history.location if latest_status_history else None,
+            'latest_update_latitude': float(latest_status_history.latitude) if latest_status_history and latest_status_history.latitude else None,
+            'latest_update_longitude': float(latest_status_history.longitude) if latest_status_history and latest_status_history.longitude else None,
+        }
+        return JsonResponse({'success': True, 'status_data': status_data})
+    except Delivery.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Delivery not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error fetching delivery status for delivery_id {delivery_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
 @csrf_exempt
 @require_GET
 def api_product_detail(request, barcode):
@@ -2827,8 +4248,13 @@ def scan_product(request):
 
 @staff_member_required
 def storage_sites(request):
-    """Storage sites management"""
-    sites = StorageLocation.objects.all()
+    """Storage sites management with aggregated data"""
+    sites = StorageLocation.objects.annotate(
+        total_inventory_items=Count('inventory_items'),
+        distinct_products=Count('inventory_items__product', distinct=True),
+        distinct_categories=Count('inventory_items__product__category', distinct=True),
+        distinct_clients=Count('inventory_items__client', distinct=True)
+    )
     
     context = {
         'sites': sites,
@@ -4845,77 +6271,152 @@ def manager_deliveries(request):
 @login_required
 @role_required('manager', 'admin')
 def manager_reports(request):
-    """Manager reports and analytics"""
-    # Date range (last 30 days by default)
-    end_date = timezone.now()
-    start_date = end_date - timedelta(days=30)
-    
-    # Inventory reports
+    """Manager reports and analytics with enhanced data for charts."""
+    # Date range filtering
+    end_date_str = request.GET.get('end_date')
+    start_date_str = request.GET.get('start_date')
+
+    if end_date_str:
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    else:
+        end_date = timezone.now().date() # Default to today
+
+    if start_date_str:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    else:
+        start_date = end_date - timedelta(days=30) # Default to last 30 days
+
+    # Ensure start_date is not after end_date
+    if start_date > end_date:
+        start_date = end_date - timedelta(days=30) # Reset to default if invalid
+
+
+    # --- INVENTORY REPORTS ---
+    inventory_items_in_range = InventoryItem.objects.filter(
+        created_at__date__range=[start_date, end_date]
+    )
     inventory_stats = {
-        'total_items': InventoryItem.objects.filter(
-            created_at__range=[start_date, end_date]
+        'total_items_added': inventory_items_in_range.count(),
+        'total_value_added': inventory_items_in_range.aggregate(total=Sum('total_value'))['total'] or 0,
+        'current_low_stock': InventoryItem.objects.filter(
+            quantity__lte=F('low_stock_threshold'), status='active'
         ).count(),
-        'total_value': InventoryItem.objects.filter(
-            created_at__range=[start_date, end_date]
-        ).aggregate(total=Sum('total_value'))['total'] or 0,
-        'items_added': InventoryItem.objects.filter(
-            created_at__range=[start_date, end_date]
-        ).count(),
-        'items_updated': InventoryItem.objects.filter(
-            updated_at__range=[start_date, end_date],
-            updated_at__gt=F('created_at')
+        'current_expiring_soon': InventoryItem.objects.filter(
+            expiry_date__lte=timezone.now().date() + timedelta(days=30),
+            expiry_date__gte=timezone.now().date(),
+            status='active'
         ).count(),
     }
     
-    # Delivery reports
+    # Inventory trend data for chart
+    inventory_trend_data = []
+    current_date = start_date
+    while current_date <= end_date:
+        items_added_day = InventoryItem.objects.filter(created_at__date=current_date).count()
+        inventory_trend_data.append({'date': current_date.strftime('%Y-%m-%d'), 'added': items_added_day})
+        current_date += timedelta(days=1)
+
+
+    # --- SALES REPORTS ---
+    orders_in_range = Order.objects.filter(created_at__date__range=[start_date, end_date])
+    sales_stats = {
+        'total_orders': orders_in_range.count(),
+        'total_revenue': orders_in_range.filter(status='delivered').aggregate(total=Sum('total_amount'))['total'] or 0,
+        'avg_order_value': orders_in_range.filter(status='delivered').aggregate(avg=Avg('total_amount'))['avg'] or 0,
+        'successful_orders': orders_in_range.filter(status='delivered').count(),
+    }
+
+    # Sales trend data for chart
+    sales_trend_data = []
+    current_date = start_date
+    while current_date <= end_date:
+        daily_revenue = orders_in_range.filter(
+            created_at__date=current_date, status='delivered'
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+        sales_trend_data.append({'date': current_date.strftime('%Y-%m-%d'), 'revenue': float(daily_revenue)})
+        current_date += timedelta(days=1)
+
+
+    # --- DELIVERY REPORTS ---
+    deliveries_in_range = Delivery.objects.filter(created_at__date__range=[start_date, end_date])
     delivery_stats = {
-        'total_deliveries': Delivery.objects.filter(
-            created_at__range=[start_date, end_date]
+        'total_deliveries': deliveries_in_range.count(),
+        'on_time_deliveries': deliveries_in_range.filter(
+            status='delivered', actual_delivery__lte=F('estimated_delivery')
         ).count(),
-        'successful_deliveries': Delivery.objects.filter(
-            status='delivered',
-            created_at__range=[start_date, end_date]
+        'late_deliveries': deliveries_in_range.filter(
+            status='delivered', actual_delivery__gt=F('estimated_delivery')
         ).count(),
-        'late_deliveries': Delivery.objects.filter(
-            status='delivered',
-            actual_delivery__gt=F('estimated_delivery'),
-            created_at__range=[start_date, end_date]
-        ).count(),
-        'avg_delivery_time': Delivery.objects.filter(
-            status='delivered',
-            created_at__range=[start_date, end_date]
-        ).aggregate(avg_time=Avg(F('actual_delivery') - F('created_at')))['avg_time'],
+        'cancelled_deliveries': deliveries_in_range.filter(status='cancelled').count(),
+        'avg_delivery_time_seconds': deliveries_in_range.filter(
+            status='delivered'
+        ).aggregate(avg=Avg(F('actual_delivery') - F('created_at')))['avg'], # Returns timedelta object
     }
-    
-    # Client reports
+    # Convert avg_delivery_time_seconds timedelta to hours for context
+    if delivery_stats['avg_delivery_time_seconds']:
+        delivery_stats['avg_delivery_time_hours'] = round(delivery_stats['avg_delivery_time_seconds'].total_seconds() / 3600, 2)
+    else:
+        delivery_stats['avg_delivery_time_hours'] = 0
+
+    # Delivery status distribution for chart
+    delivery_status_chart_data = {
+        'labels': [],
+        'data': []
+    }
+    for status_choice in Delivery.STATUS_CHOICES:
+        count = deliveries_in_range.filter(status=status_choice[0]).count()
+        if count > 0:
+            delivery_status_chart_data['labels'].append(status_choice[1])
+            delivery_status_chart_data['data'].append(count)
+
+
+    # --- CLIENT REPORTS ---
+    clients_in_range = CustomUser.objects.filter(date_joined__date__range=[start_date, end_date])
     client_stats = {
-        'active_clients': CustomUser.objects.filter(
-            user_type='customer',
-            is_active=True,
-            date_joined__range=[start_date, end_date]
+        'new_clients': clients_in_range.filter(user_type='customer').count(),
+        'total_clients': CustomUser.objects.filter(user_type='customer').count(),
+        'active_clients_in_period': clients_in_range.filter(
+            user_type='customer', last_login__date__range=[start_date, end_date]
         ).count(),
-        'new_clients': CustomUser.objects.filter(
-            user_type='customer',
-            date_joined__range=[start_date, end_date]
-        ).count(),
-        'top_clients': InventoryItem.objects.filter(
-            created_at__range=[start_date, end_date]
-        ).values('client__username').annotate(
-            total_items=Count('id'),
-            total_value=Sum('total_value')
-        ).order_by('-total_value')[:5],
+        'top_clients_by_value': Order.objects.filter(
+            created_at__date__range=[start_date, end_date], status='delivered'
+        ).values('user__username').annotate(
+            total_spent=Sum('total_amount')
+        ).order_by('-total_spent')[:5],
     }
-    
+
     context = {
-        'inventory_stats': inventory_stats,
-        'delivery_stats': delivery_stats,
-        'client_stats': client_stats,
         'start_date': start_date.strftime('%Y-%m-%d'),
         'end_date': end_date.strftime('%Y-%m-%d'),
+        'inventory_stats': inventory_stats,
+        'sales_stats': sales_stats,
+        'delivery_stats': delivery_stats,
+        'client_stats': client_stats,
+        'inventory_trend_data': json.dumps(inventory_trend_data), # For JS chart
+        'sales_trend_data': json.dumps(sales_trend_data),         # For JS chart
+        'delivery_status_chart_data': json.dumps(delivery_status_chart_data), # For JS chart
         'site_info': SiteInfo.objects.first(),
     }
     
     return render(request, 'bika/pages/manager/reports.html', context)
+
+@login_required
+@role_required('manager', 'admin') # Only managers and admins can view the team
+def manager_team_view(request):
+    """
+    Displays the team members with their roles.
+    Managers can see other staff and their types.
+    """
+    team_members = CustomUser.objects.filter(
+        Q(user_type='manager') | Q(user_type='admin') | Q(user_type='vendor') | Q(user_type='storage_staff')
+    ).order_by('user_type', 'username')
+
+    context = {
+        'team_members': team_members,
+        'site_info': SiteInfo.objects.first(),
+        'title': 'Team Management',
+    }
+    return render(request, 'bika/pages/manager/team.html', context)
 
 @login_required
 @role_required('manager', 'admin')
@@ -4968,7 +6469,7 @@ def assign_delivery_staff(request, delivery_id):
     staff_id = request.POST.get('staff_id')
     
     if staff_id:
-        staff = get_object_or_404(CustomUser, id=staff_id)
+        staff = get_object_or_404(CustomUser, id=staff_id, user_type__in=['driver', 'storage_staff', 'manager', 'admin'])
         delivery.assigned_to = staff
         delivery.save()
         
@@ -4987,6 +6488,155 @@ def assign_delivery_staff(request, delivery_id):
         messages.error(request, 'Please select a staff member.')
     
     return redirect('bika:manager_deliveries')
+
+@login_required
+@role_required('manager', 'admin')
+def manager_delivery_detail_view(request, delivery_id):
+    """
+    Displays comprehensive details of a specific delivery for managers and admins.
+    Allows updating status, assigning drivers, and submitting proof of delivery.
+    """
+    delivery = get_object_or_404(Delivery, id=delivery_id)
+    
+    # Get associated data
+    delivery_items = DeliveryItem.objects.filter(delivery=delivery).select_related('item', 'product')
+    status_history = DeliveryStatusHistory.objects.filter(delivery=delivery).select_related('changed_by').order_by('timestamp')
+    available_drivers = CustomUser.objects.filter(user_type__in=['driver', 'storage_staff', 'manager', 'admin']).order_by('username')
+
+    # Forms for updating and proof of delivery
+    status_form = DeliveryStatusUpdateForm(prefix='status_update')
+    proof_form = DeliveryProofForm(prefix='proof_of_delivery')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'update_status':
+            status_form = DeliveryStatusUpdateForm(request.POST, prefix='status_update')
+            if status_form.is_valid():
+                new_status = status_form.cleaned_data['status']
+                notes = status_form.cleaned_data['notes']
+                location = status_form.cleaned_data['location']
+                latitude = status_form.cleaned_data['latitude']
+                longitude = status_form.cleaned_data['longitude']
+
+                # Create DeliveryStatusHistory entry
+                DeliveryStatusHistory.objects.create(
+                    delivery=delivery,
+                    from_status=delivery.status,
+                    to_status=new_status,
+                    changed_by=request.user,
+                    notes=notes,
+                    location=location,
+                    latitude=latitude,
+                    longitude=longitude
+                )
+                
+                # Update delivery status and fields
+                delivery.status = new_status
+                delivery.status_changed_at = timezone.now()
+                delivery.delivery_latitude = latitude
+                delivery.delivery_longitude = longitude
+                if new_status == 'delivered':
+                    delivery.actual_delivery = timezone.now()
+                delivery.save()
+
+                messages.success(request, f'Delivery status updated to {delivery.get_status_display()}.')
+                return redirect('bika:manager_delivery_detail', delivery_id=delivery.id)
+            else:
+                messages.error(request, 'Error updating status. Please check the form.')
+
+        elif action == 'assign_driver':
+            staff_id = request.POST.get('staff_id') # From a simple select, not a full form
+            if staff_id:
+                driver = get_object_or_404(CustomUser, id=staff_id, user_type__in=['driver', 'storage_staff', 'manager', 'admin'])
+                delivery.assigned_to = driver
+                delivery.save()
+                messages.success(request, f'Driver {driver.get_full_name|default:driver.username} assigned to delivery.')
+                return redirect('bika:manager_delivery_detail', delivery_id=delivery.id)
+            else:
+                messages.error(request, 'Please select a driver.')
+
+        elif action == 'proof_of_delivery':
+            proof_form = DeliveryProofForm(request.POST, request.FILES, prefix='proof_of_delivery')
+            if proof_form.is_valid():
+                # Update Delivery model with proof details
+                delivery.recipient_name = proof_form.cleaned_data['recipient_name']
+                delivery.recipient_phone = proof_form.cleaned_data['recipient_phone']
+                delivery.delivery_notes = proof_form.cleaned_data['delivery_notes']
+                if 'proof_photo' in request.FILES:
+                    delivery.proof_photo = request.FILES['proof_photo']
+                # Assuming signature is handled via JS and stored in a hidden field
+                # delivery.recipient_signature_image = proof_form.cleaned_data['recipient_signature']
+                
+                delivery.status = 'delivered' # Mark as delivered upon proof submission
+                delivery.actual_delivery = timezone.now()
+                delivery.save()
+
+                messages.success(request, 'Proof of delivery submitted successfully.')
+                return redirect('bika:manager_delivery_detail', delivery_id=delivery.id)
+            else:
+                messages.error(request, 'Error submitting proof of delivery. Please check the form.')
+
+    context = {
+        'delivery': delivery,
+        'delivery_items': delivery_items,
+        'status_history': status_history,
+        'status_form': status_form,
+        'proof_form': proof_form,
+        'available_drivers': available_drivers,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/manager/delivery_detail.html', context)
+
+@login_required
+@role_required('manager', 'admin')
+def manager_user_role_management(request, user_id=None):
+    """
+    Manager/Admin view to manage user roles and permissions.
+    Allows listing, adding, and editing user roles.
+    """
+    users_with_roles = CustomUser.objects.filter(
+        Q(user_role__isnull=False) | Q(user_type__in=['vendor', 'customer']) # Include users without explicit role but with default types
+    ).distinct().select_related('user_role').order_by('username')
+    
+    form = None
+    user_to_edit = None
+
+    if user_id:
+        user_to_edit = get_object_or_404(CustomUser, id=user_id)
+        # Try to get existing UserRole, otherwise create a new one
+        user_role_instance, created = UserRole.objects.get_or_create(user=user_to_edit, defaults={'role': user_to_edit.user_type})
+        form = UserRoleForm(instance=user_role_instance)
+    else:
+        form = UserRoleForm() # For assigning a role to a new user
+
+    if request.method == 'POST':
+        if user_to_edit:
+            form = UserRoleForm(request.POST, instance=user_role_instance)
+        else:
+            form = UserRoleForm(request.POST)
+
+        if form.is_valid():
+            user_role = form.save(commit=False)
+            
+            # If creating a new role, link it to the selected user
+            if not user_role.pk:
+                selected_user = form.cleaned_data['user']
+                user_role.user = selected_user
+
+            user_role.save()
+            messages.success(request, 'User role updated successfully!')
+            return redirect('bika:manager_user_role_management')
+        else:
+            messages.error(request, 'Error saving user role. Please check the form.')
+
+    context = {
+        'users_with_roles': users_with_roles,
+        'form': form,
+        'user_to_edit': user_to_edit,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/manager/user_role_management.html', context)
 
 # ==================== STORAGE STAFF VIEWS ====================
 
@@ -5242,6 +6892,48 @@ def storage_check_out(request):
     }
     
     return render(request, 'bika/pages/storage/check_out.html', context)
+
+@login_required
+@role_required('storage_staff', 'manager', 'admin')
+def storage_add_edit_inventory_item_view(request, item_id=None):
+    """
+    Allows storage staff, managers, and admins to add or edit inventory items.
+    If item_id is provided, it's an edit view; otherwise, it's an add view.
+    """
+    item = None
+    if item_id:
+        item = get_object_or_404(InventoryItem, id=item_id)
+        title = "Edit Inventory Item"
+    else:
+        title = "Add New Inventory Item"
+
+    if request.method == 'POST':
+        form = InventoryItemForm(request.POST, user=request.user, instance=item)
+        if form.is_valid():
+            inventory_item = form.save(commit=False)
+            inventory_item.last_checked = timezone.now()
+            inventory_item.checked_by = request.user
+            
+            # If adding, set created_at
+            if not item_id:
+                inventory_item.added_by = request.user
+                inventory_item.created_at = timezone.now()
+
+            inventory_item.save()
+            messages.success(request, f'Inventory item "{inventory_item.name}" saved successfully!')
+            return redirect('bika:storage_inventory')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = InventoryItemForm(user=request.user, instance=item)
+    
+    context = {
+        'form': form,
+        'title': title,
+        'item': item,
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/storage/add_edit_inventory_item.html', context)
 
 @login_required
 @role_required('storage_staff', 'manager', 'admin')
@@ -5529,18 +7221,84 @@ def client_delivery_detail(request, delivery_id):
     return render(request, 'bika/pages/client/delivery_detail.html', context)
 
 @login_required
+@role_required('client', 'customer')
+def track_order_map(request, delivery_id):
+    """
+    Displays a map with the delivery route and status.
+    Clients can only see their own deliveries.
+    """
+    delivery = get_object_or_404(Delivery,
+                               id=delivery_id,
+                               client=request.user)
+
+    # Get status history for plotting points on map
+    status_history = DeliveryStatusHistory.objects.filter(
+        delivery=delivery
+    ).order_by('timestamp')
+
+    # Prepare historical points for map (e.g., Leaflet.js)
+    # This is a simplified example; actual coordinates would come from location data
+    delivery_points = []
+    for history_entry in status_history:
+        # Placeholder for actual coordinates. In a real app, you'd store lat/lon
+        # for each status update or have a dedicated DeliveryLocation model.
+        # For now, we'll use example coordinates.
+        if history_entry.to_status == 'pending':
+            coords = {'lat': -6.8160, 'lon': 39.2803} # Dar es Salaam initial point
+        elif history_entry.to_status == 'processing':
+            coords = {'lat': -6.7924, 'lon': 39.2083} # Near port
+        elif history_entry.to_status == 'in_transit':
+            coords = {'lat': -6.8000, 'lon': 39.2000} # Moving towards destination
+        elif history_entry.to_status == 'out_for_delivery':
+            coords = {'lat': -6.7700, 'lon': 39.1800} # Closer to a common delivery area
+        elif history_entry.to_status == 'delivered':
+            coords = {'lat': -6.7600, 'lon': 39.1700} # Final delivery spot
+        else:
+            coords = None
+
+        if coords:
+            delivery_points.append({
+                'lat': coords['lat'],
+                'lon': coords['lon'],
+                'status': history_entry.get_to_status_display(),
+                'timestamp': history_entry.timestamp.isoformat(),
+                'notes': history_entry.notes
+            })
+    
+    # If the delivery has a destination address with coordinates, include it
+    destination_coords = None
+    if delivery.delivery_latitude and delivery.delivery_longitude:
+        destination_coords = {
+            'lat': float(delivery.delivery_latitude),
+            'lon': float(delivery.delivery_longitude),
+            'name': delivery.delivery_address,
+            'type': 'destination'
+        }
+        # Add destination to points if not already the last point
+        if not delivery_points or delivery_points[-1]['lat'] != destination_coords['lat'] or delivery_points[-1]['lon'] != destination_coords['lon']:
+            delivery_points.append(destination_coords)
+    
+    context = {
+        'delivery': delivery,
+        'status_history': status_history,
+        'delivery_points': json.dumps(delivery_points), # Pass as JSON for JS
+        'destination_coords': json.dumps(destination_coords),
+        'site_info': SiteInfo.objects.first(),
+    }
+    return render(request, 'bika/pages/user/track_order_map.html', context)
+@login_required
 def client_requests(request):
     """Client requests overview page"""
     # Check if user is a client
     if not request.user.user_type == 'customer':
         messages.error(request, "Access denied. Client account required.")
         return redirect('bika:home')
-    
+
     # Get client's requests
     requests = ClientRequest.objects.filter(
         client=request.user
     ).order_by('-requested_date')
-    
+
     # Get request stats
     stats = {
         'total': requests.count(),
@@ -5548,13 +7306,13 @@ def client_requests(request):
         'in_progress': requests.filter(status='in_progress').count(),
         'completed': requests.filter(status='completed').count(),
     }
-    
+
     context = {
         'requests': requests,
         'stats': stats,
         'site_info': SiteInfo.objects.first(),
     }
-    
+
     return render(request, 'bika/pages/client/requests.html', context)
 
 @login_required

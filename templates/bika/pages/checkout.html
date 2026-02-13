@@ -185,15 +185,43 @@
                     </div>
                 </div>
 
+                <!-- Shipping Methods -->
+                <div class="shipping-methods mb-4">
+                    <h4 class="mb-3">Choose Shipping Method</h4>
+                    <div class="row g-3" id="shippingMethodsGrid">
+                        {% for method in available_shipping_methods %}
+                        <div class="col-md-6">
+                            <div class="card shipping-method-card" data-shipping-cost="{{ method.base_cost }}" 
+                                 onclick="selectShippingMethod({{ method.id }}, {{ method.base_cost }})">
+                                <div class="card-body">
+                                    <input class="form-check-input float-end" type="radio" name="shipping_method" 
+                                           id="shippingMethod{{ method.id }}" value="{{ method.id }}"
+                                           {% if method.id == selected_shipping_method_id %}checked{% endif %}>
+                                    <h6 class="card-title">{{ method.name }}</h6>
+                                    <p class="card-text text-muted mb-1">{{ method.description }}</p>
+                                    <p class="card-text">
+                                        <strong>${{ method.base_cost }}</strong> - 
+                                        Est. {{ method.estimated_delivery_min_days }}-{{ method.estimated_delivery_max_days }} days
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="col-12">
+                            <p class="alert alert-info">No shipping methods available for your location.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
                 <!-- Payment Methods -->
                 <div class="payment-methods">
                     <h4 class="mb-4">Choose Payment Method</h4>
                     
                     <div class="payment-method-grid" id="paymentMethodsGrid">
-                        {% for method in available_methods %}
                         <div class="payment-method-card" 
-                             onclick="selectPaymentMethod('{{ method.value }}')"
-                             id="card{{ method.value|title }}">
+                             onclick="selectPaymentMethod('{{ method.gateway }}')"
+                             id="card_{{ method.gateway }}">
                             <div class="d-flex align-items-center">
                                 <div class="payment-icon text-{{ method.color }}">
                                     <i class="{{ method.icon }}"></i>
@@ -201,13 +229,13 @@
                                 <div class="ms-3 flex-grow-1">
                                     <h6 class="mb-1">{{ method.name }}</h6>
                                     <small class="text-muted">
-                                        {% if 'mpesa' in method.value %}
+                                        {% if 'mpesa' in method.gateway %}
                                         Send money to +255 798 780 022
-                                        {% elif 'tigo' in method.value %}
+                                        {% elif 'tigo' in method.gateway %}
                                         Send money to +255 789 123 456
-                                        {% elif 'airtel' in method.value %}
+                                        {% elif 'airtel' in method.gateway %}
                                         Send money to +255 788 987 654
-                                        {% elif 'mtn' in method.value %}
+                                        {% elif 'mtn' in method.gateway %}
                                         Send money to +250 798 780 022
                                         {% else %}
                                         Secure online payment
@@ -217,45 +245,52 @@
                             </div>
                             
                             <!-- Payment Forms -->
-                            <div class="payment-form d-none" id="form{{ method.value|title }}">
-                                {% if 'mpesa' in method.value or 'tigo' in method.value or 'airtel' in method.value or 'mtn' in method.value %}
+                            <div class="payment-form d-none" id="form_{{ method.gateway }}">
+                                {% if 'mpesa' in method.gateway or 'tigo' in method.gateway or 'airtel' in method.gateway or 'mtn' in method.gateway or 'halotel' in method.gateway %}
                                 <!-- Mobile Money Form -->
                                 <div class="mb-3">
                                     <label class="form-label">Phone Number</label>
                                     <div class="phone-input-group">
-                                        <span class="country-code" id="phonePrefix{{ method.value|title }}">+255</span>
+                                        <span class="country-code" id="phonePrefix_{{ method.gateway }}">
+                                            {% if 'TZ' in method.gateway %}+255
+                                            {% elif 'RW' in method.gateway %}+250
+                                            {% elif 'UG' in method.gateway %}+256
+                                            {% elif 'KE' in method.gateway %}+254
+                                            {% else %}+XXX
+                                            {% endif %}
+                                        </span>
                                         <input type="tel" class="form-control phone-input" 
-                                               id="phone{{ method.value|title }}" 
-                                               placeholder="798780022" 
-                                               maxlength="9" 
-                                               pattern="[0-9]{9}">
+                                               id="phone_{{ method.gateway }}" 
+                                               placeholder="e.g., 798780022" 
+                                               maxlength="15" 
+                                               pattern="[0-9]+">
                                     </div>
                                     <div class="form-text">Enter your {{ method.name }} registered number</div>
                                 </div>
-                                <button class="btn btn-{{ method.color }} w-100" 
-                                        onclick="initiateMobilePayment('{{ method.value }}')">
+                                <button class="btn btn-primary w-100" 
+                                        onclick="initiateMobilePayment('{{ method.gateway }}')">
                                     <i class="fas fa-paper-plane me-2"></i>Pay with {{ method.name }}
                                 </button>
                                 
-                                {% elif 'visa' in method.value or 'mastercard' in method.value or 'amex' in method.value %}
-                                <!-- Card Payment Form -->
-                                <div id="cardForm{{ method.value|title }}">
+                                {% elif 'stripe' in method.gateway %}
+                                <!-- Card Payment Form (Stripe) -->
+                                <div id="cardForm_{{ method.gateway }}">
                                     <div class="mb-3">
                                         <label class="form-label">Card Information</label>
-                                        <div id="cardElement{{ method.value|title }}" class="card-element">
+                                        <div id="cardElement_{{ method.gateway }}" class="card-element">
                                             <!-- Stripe Elements will be inserted here -->
                                         </div>
                                     </div>
-                                    <button class="btn btn-{{ method.color }} w-100" 
-                                            onclick="initiateCardPayment('{{ method.value }}')">
+                                    <button class="btn btn-primary w-100" 
+                                            onclick="initiateCardPayment('{{ method.gateway }}')">
                                         <i class="fas fa-lock me-2"></i>Pay Securely
                                     </button>
                                 </div>
                                 
-                                {% elif 'paypal' in method.value %}
+                                {% elif 'paypal' in method.gateway %}
                                 <!-- PayPal Form -->
-                                <button class="btn btn-{{ method.color }} w-100" 
-                                        onclick="initiatePayPalPayment()">
+                                <button class="btn btn-primary w-100" 
+                                        onclick="initiatePayPalPayment('{{ method.gateway }}')">
                                     <i class="fab fa-paypal me-2"></i>Pay with PayPal
                                 </button>
                                 {% endif %}
@@ -300,14 +335,36 @@
                                 <span>Tax (18%):</span>
                                 <span>${{ tax_amount }}</span>
                             </div>
+                            <!-- Discount Line (NEW) -->
+                            {% if discount_amount > 0 %}
+                            <div class="d-flex justify-content-between mb-2 text-danger">
+                                <span>Discount:</span>
+                                <span>-$<span id="discountAmountDisplay">{{ discount_amount }}</span></span>
+                            </div>
+                            {% endif %}
                             <div class="d-flex justify-content-between mb-3">
                                 <span>Shipping:</span>
-                                <span>${{ shipping_cost }}</span>
+                                <span>$<span id="shippingCostDisplay">{{ shipping_cost }}</span></span>
                             </div>
+                            
+                            <!-- Coupon Input Section (NEW) -->
+                            <div class="mb-3">
+                                <label for="couponCode" class="form-label visually-hidden">Coupon Code</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="couponCode" placeholder="Coupon Code" value="{{ applied_coupon_code|default:'' }}">
+                                    <button class="btn btn-primary" type="button" id="applyCouponBtn">Apply</button>
+                                </div>
+                                <small class="text-success mt-1" id="couponSuccessMsg">
+                                    {% if applied_coupon_code %}Coupon {{ applied_coupon_code }} applied!{% endif %}
+                                </small>
+                                <small class="text-danger mt-1" id="couponErrorMsg"></small>
+                            </div>
+                            <!-- End Coupon Input Section -->
+
                             <hr style="border-color: rgba(255,255,255,0.3);">
                             <div class="d-flex justify-content-between mb-0">
                                 <strong>Total Amount:</strong>
-                                <strong class="h5">${{ total_amount }}</strong>
+                                <strong class="h5">$<span id="totalAmountDisplay">{{ total_amount }}</span></strong>
                             </div>
                             <small class="text-muted d-block mt-2" id="currencyNote">
                                 Amount will be converted to your local currency
@@ -377,42 +434,144 @@
 // Configuration
 const stripe = Stripe('{{ STRIPE_PUBLISHABLE_KEY }}');
 let selectedMethod = '';
+let selectedShippingMethodId = '{{ selected_shipping_method_id }}';
 let currentOrderId = null;
-let currentCountry = '{{ user_country }}';
+let userCountry = '{{ user_country }}'; // Initial country from Django context
 
-// Country configuration
-const countryConfig = {
-    'TZ': { prefix: '+255', currency: 'TZS', methods: {{ available_methods|safe }} },
-    'RW': { prefix: '+250', currency: 'RWF', methods: [] },
-    'UG': { prefix: '+256', currency: 'UGX', methods: [] },
-    'KE': { prefix: '+254', currency: 'KES', methods: [] }
+// Initial values for calculations
+let currentSubtotal = parseFloat('{{ subtotal|floatformat:2 }}');
+let currentTaxAmount = parseFloat('{{ tax_amount|floatformat:2 }}');
+let currentShippingCost = parseFloat('{{ shipping_cost|floatformat:2 }}');
+let currentDiscountAmount = parseFloat('{{ discount_amount|floatformat:2 }}'); // NEW
+
+// Map payment methods to icons/colors for consistency with CSS
+const methodIcons = {
+    'mpesa_tz': { icon: 'fas fa-mobile-alt', color: 'success' },
+    'tigo_tz': { icon: 'fas fa-sim-card', color: 'info' },
+    'airtel_tz': { icon: 'fas fa-wifi', color: 'danger' },
+    'halotel_tz': { icon: 'fas fa-mobile-alt', color: 'danger' },
+    'mtn_rw': { icon: 'fas fa-mobile-alt', color: 'warning' },
+    'mtn_ug': { icon: 'fas fa-mobile-alt', color: 'warning' },
+    'airtel_rw': { icon: 'fas fa-wifi', color: 'danger' },
+    'airtel_ug': { icon: 'fas fa-wifi', color: 'danger' },
+    'mpesa_ke': { icon: 'fas fa-mobile-alt', color: 'success' },
+    'stripe': { icon: 'fab fa-cc-stripe', color: 'primary' },
+    'paypal': { icon: 'fab fa-paypal', color: 'info' },
 };
 
-function selectCountry(countryCode) {
-    currentCountry = countryCode;
-    const config = countryConfig[countryCode];
+// Initial available methods from Django context
+const availableMethods = {{ available_methods|json_script:"available_methods_data" }};
+const availableMethodsParsed = JSON.parse(document.getElementById('available_methods_data').textContent);
+
+const availableShippingMethods = {{ available_shipping_methods|json_script:"available_shipping_methods_data" }}; // NEW
+const availableShippingMethodsParsed = JSON.parse(document.getElementById('available_shipping_methods_data').textContent); // NEW
+
+// Function to update phone number prefix based on gateway/country
+function updatePhoneNumberPrefix(gatewayName) {
+    const phonePrefixEl = document.getElementById('phonePrefix_' + gatewayName);
+    if (phonePrefixEl) {
+        let prefix = '+XXX'; // Default
+        if (gatewayName.includes('tz')) prefix = '+255';
+        else if (gatewayName.includes('rw')) prefix = '+250';
+        else if (gatewayName.includes('ug')) prefix = '+256';
+        else if (gatewayName.includes('ke')) prefix = '+254';
+        
+        phonePrefixEl.textContent = prefix;
+    }
+}
+
+function selectShippingMethod(methodId, cost) {
+    selectedShippingMethodId = methodId;
+    currentShippingCost = cost;
     
-    // Update phone prefixes
-    document.querySelectorAll('[id^="phonePrefix"]').forEach(el => {
-        el.textContent = config.prefix;
+    // Visually update selected card
+    document.querySelectorAll('.shipping-method-card').forEach(card => {
+        card.classList.remove('selected');
+        card.querySelector('input[type="radio"]').checked = false;
     });
-    
-    // Update currency note
-    document.getElementById('currencyNote').textContent = 
-        `Amount will be converted to ${config.currency}`;
-    
-    // Reload payment methods (you would fetch this from server in real implementation)
-    loadPaymentMethodsForCountry(countryCode);
+    const selectedCard = document.querySelector(`#shippingMethodsGrid .shipping-method-card [value="${methodId}"]`).closest('.shipping-method-card');
+    if (selectedCard) {
+        selectedCard.classList.add('selected');
+        selectedCard.querySelector('input[type="radio"]').checked = true;
+    }
+
+    updateOrderSummary();
 }
 
-function loadPaymentMethodsForCountry(countryCode) {
-    // In a real implementation, you would fetch available methods from the server
-    console.log(`Loading payment methods for ${countryCode}`);
-    // For now, we'll just show a loading state and keep the current methods
+async function applyCoupon() {
+    const couponCodeInput = document.getElementById('couponCode');
+    const couponCode = couponCodeInput.value.trim();
+    const couponSuccessMsg = document.getElementById('couponSuccessMsg');
+    const couponErrorMsg = document.getElementById('couponErrorMsg');
+
+    couponSuccessMsg.textContent = '';
+    couponErrorMsg.textContent = '';
+
+    if (!couponCode) {
+        couponErrorMsg.textContent = 'Please enter a coupon code.';
+        return;
+    }
+
+    try {
+        showLoading('Applying coupon...');
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('coupon_code', couponCode);
+        formData.append('action', 'apply_coupon'); // Indicate action to Django view
+
+        const response = await fetch('{% url "bika:checkout" %}', { // Call checkout view for coupon validation
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        hideLoading();
+
+        if (data.success) {
+            currentDiscountAmount = parseFloat(data.discount_amount);
+            couponSuccessMsg.textContent = `Coupon ${couponCode} applied! You saved $${currentDiscountAmount.toFixed(2)}.`;
+            couponCodeInput.value = couponCode; // Keep coupon code in input
+        } else {
+            currentDiscountAmount = 0;
+            couponErrorMsg.textContent = data.message;
+            couponCodeInput.value = ''; // Clear coupon code on error
+        }
+        updateOrderSummary();
+    } catch (error) {
+        hideLoading();
+        currentDiscountAmount = 0;
+        couponErrorMsg.textContent = 'Error applying coupon: ' + error.message;
+        couponCodeInput.value = '';
+        updateOrderSummary();
+        console.error('Error applying coupon:', error);
+    }
 }
 
-function selectPaymentMethod(method) {
-    selectedMethod = method;
+function updateOrderSummary() {
+    const newTotalAmount = currentSubtotal + currentTaxAmount + currentShippingCost - currentDiscountAmount; // Substract discount
+
+    document.getElementById('shippingCostDisplay').textContent = currentShippingCost.toFixed(2);
+    // Update discount amount display
+    const discountDisplayEl = document.getElementById('discountAmountDisplay');
+    if (discountDisplayEl) {
+        discountDisplayEl.textContent = currentDiscountAmount.toFixed(2);
+        discountDisplayEl.closest('div').style.display = currentDiscountAmount > 0 ? 'flex' : 'none'; // Show/hide discount row
+    }
+
+    document.getElementById('totalAmountDisplay').textContent = newTotalAmount.toFixed(2);
+}
+
+function selectCountry(countryCode) {
+    userCountry = countryCode;
+    // In a production scenario, this would trigger a re-render or AJAX call
+    // to update `availableMethods` based on the selected country and refresh the payment method grid.
+    console.log(`Country selected: ${userCountry}`);
+    // For now, assume availableMethods in Django context is already sufficient or refresh manually.
+    // loadPaymentMethodsForCountry(countryCode); // Uncomment if implementing dynamic method loading
+}
+
+function selectPaymentMethod(gatewayName) {
+    selectedMethod = gatewayName;
     
     // Reset all cards
     document.querySelectorAll('.payment-method-card').forEach(card => {
@@ -425,21 +584,32 @@ function selectPaymentMethod(method) {
     });
     
     // Select current card and show form
-    const card = document.getElementById('card' + method.charAt(0).toUpperCase() + method.slice(1));
-    const form = document.getElementById('form' + method.charAt(0).toUpperCase() + method.slice(1));
+    const card = document.getElementById('card_' + gatewayName);
+    const form = document.getElementById('form_' + gatewayName);
     
     if (card && form) {
         card.classList.add('selected');
         form.classList.remove('d-none');
         
+        // Update phone prefix if mobile money
+        if (gatewayName.includes('mpesa') || gatewayName.includes('tigo') || gatewayName.includes('airtel') || gatewayName.includes('mtn') || gatewayName.includes('halotel')) {
+            updatePhoneNumberPrefix(gatewayName);
+        }
+
         // Initialize Stripe Elements for card payments
-        if (method.includes('visa') || method.includes('mastercard') || method.includes('amex')) {
-            initializeStripeElements(method);
+        if (gatewayName.includes('stripe')) { // Assuming Stripe handles visa/mastercard etc.
+            initializeStripeElements(gatewayName);
         }
     }
 }
 
-function initializeStripeElements(method) {
+let stripeElements = {}; // To store Stripe Elements instances
+
+function initializeStripeElements(gatewayName) {
+    if (stripeElements[gatewayName]) {
+        return; // Already initialized
+    }
+    
     const elements = stripe.elements();
     const cardElement = elements.create('card', {
         style: {
@@ -450,21 +620,32 @@ function initializeStripeElements(method) {
                     color: '#aab7c4',
                 },
             },
+            invalid: {
+                color: '#fa755a',
+                iconColor: '#fa755a',
+            },
         },
     });
     
-    const cardElementId = 'cardElement' + method.charAt(0).toUpperCase() + method.slice(1);
-    cardElement.mount('#' + cardElementId);
+    const cardElementId = 'cardElement_' + gatewayName;
+    const cardElementContainer = document.getElementById(cardElementId);
+    if (cardElementContainer) {
+        cardElement.mount(cardElementContainer);
+        stripeElements[gatewayName] = cardElement; // Store instance
+    }
 }
 
 async function createOrder() {
     try {
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-        formData.append('shipping_address', 'Default address');
-        formData.append('billing_address', 'Default address');
+        // Retrieve selected addresses from your form (example placeholders below)
+        // You'll need to add inputs for shipping_address and billing_address in your HTML
+        // For now, assuming default addresses are handled server-side or selected in a different step
+        formData.append('shipping_address', '{{ shipping_address.id }}'); // Example
+        formData.append('billing_address', '{{ billing_address.id }}');   // Example
         
-        const response = await fetch('{% url "bika:create_order" %}', {
+        const response = await fetch('{% url "bika:place_order" %}', {
             method: 'POST',
             body: formData
         });
@@ -481,31 +662,38 @@ async function createOrder() {
     }
 }
 
-async function initiateMobilePayment(method) {
-    const phoneInput = document.getElementById('phone' + method.charAt(0).toUpperCase() + method.slice(1));
+async function initiateMobilePayment(gatewayName) {
+    const phoneInput = document.getElementById('phone_' + gatewayName);
     const phoneNumber = phoneInput.value.trim();
-    const prefix = document.getElementById('phonePrefix' + method.charAt(0).toUpperCase() + method.slice(1)).textContent;
+    const phonePrefixEl = document.getElementById('phonePrefix_' + gatewayName);
+    const prefix = phonePrefixEl ? phonePrefixEl.textContent : '';
     
-    if (!phoneNumber || !/^\d{9}$/.test(phoneNumber)) {
-        alert('Please enter a valid 9-digit phone number');
+    if (!phoneNumber || !/^\d+$/.test(phoneNumber)) { // Basic validation for digits
+        alert('Please enter a valid phone number');
         return;
     }
     
     const fullPhoneNumber = prefix + phoneNumber;
     
     try {
-        showLoading('Initiating ' + method + ' payment...');
+        showLoading('Initiating ' + gatewayName + ' payment...');
         
-        const orderData = await createOrder();
-        currentOrderId = orderData.order_id;
+        // This 'createOrder' might be integrated directly into place_order view
+        // if order is created just before payment initiation.
+        // If your flow creates order first and then initiates payment, use this:
+        // const orderData = await createOrder(); 
+        // currentOrderId = orderData.order_id;
         
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-        formData.append('order_id', currentOrderId);
-        formData.append('payment_method', method);
-        formData.append('phone_number', fullPhoneNumber);
+        // You might need to pass order_id from server context or after createOrder()
+        // For now, assuming place_order handles order creation and payment initiation
+        formData.append('payment_method', gatewayName);
+        formData.append('mobile_money_phone', fullPhoneNumber); // New field name for mobile number
+        formData.append('shipping_method_id', selectedShippingMethodId); // NEW
         
-        const response = await fetch('{% url "bika:initiate_payment" %}', {
+        // Assuming your 'place_order' view will initiate payment
+        const response = await fetch('{% url "bika:place_order" %}', {
             method: 'POST',
             body: formData
         });
@@ -513,8 +701,13 @@ async function initiateMobilePayment(method) {
         const data = await response.json();
         
         if (data.success) {
-            showLoading('Waiting for payment confirmation...');
-            pollPaymentStatus(data.payment_id);
+            if (data.redirect_url) {
+                window.location.href = data.redirect_url; // Redirect for PayPal or other web-based payments
+            } else {
+                currentOrderId = data.order_id; // Assuming order_id is returned
+                showLoading('Waiting for payment confirmation on your device...');
+                pollPaymentStatus(data.payment_id); // payment_id from Payment object
+            }
         } else {
             hideLoading();
             alert('Payment failed: ' + data.message);
@@ -525,22 +718,38 @@ async function initiateMobilePayment(method) {
     }
 }
 
-async function initiateCardPayment(method) {
+async function initiateCardPayment(gatewayName) {
     try {
         showLoading('Processing card payment...');
         
-        const orderData = await createOrder();
-        currentOrderId = orderData.order_id;
+        const cardElement = stripeElements[gatewayName];
+        if (!cardElement) {
+            alert('Card element not initialized.');
+            hideLoading();
+            return;
+        }
+
+        const {paymentMethod, error} = await stripe.createPaymentMethod({
+            type: 'card',
+            card: cardElement,
+            billing_details: {
+                // Collect billing details from your form if needed
+            },
+        });
+
+        if (error) {
+            hideLoading();
+            alert(error.message);
+            return;
+        }
         
-        // For card payments, you would tokenize the card with Stripe
-        // This is a simplified version
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-        formData.append('order_id', currentOrderId);
-        formData.append('payment_method', method);
-        formData.append('card_token', 'tok_visa'); // You would get this from Stripe
+        formData.append('payment_method', gatewayName);
+        formData.append('stripe_payment_method_id', paymentMethod.id);
+        formData.append('shipping_method_id', selectedShippingMethodId); // NEW
         
-        const response = await fetch('{% url "bika:initiate_payment" %}', {
+        const response = await fetch('{% url "bika:place_order" %}', {
             method: 'POST',
             body: formData
         });
@@ -548,7 +757,19 @@ async function initiateCardPayment(method) {
         const data = await response.json();
         
         if (data.success) {
-            showSuccess();
+            if (data.requires_action) {
+                // Handle 3D Secure or other actions
+                const {error: confirmError} = await stripe.confirmCardPayment(data.client_secret);
+                if (confirmError) {
+                    hideLoading();
+                    alert(confirmError.message);
+                    return;
+                }
+                // Payment confirmed, now verify status from server
+                pollPaymentStatus(data.payment_id);
+            } else {
+                showSuccess();
+            }
         } else {
             hideLoading();
             alert('Payment failed: ' + data.message);
@@ -559,8 +780,31 @@ async function initiateCardPayment(method) {
     }
 }
 
-function initiatePayPalPayment() {
-    alert('PayPal integration coming soon!');
+async function initiatePayPalPayment(gatewayName) {
+    try {
+        showLoading('Redirecting to PayPal...');
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('payment_method', gatewayName);
+        formData.append('shipping_method_id', selectedShippingMethodId); // NEW
+
+        const response = await fetch('{% url "bika:place_order" %}', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.redirect_url) {
+            window.location.href = data.redirect_url;
+        } else {
+            hideLoading();
+            alert('PayPal initiation failed: ' + data.message);
+        }
+    } catch (error) {
+        hideLoading();
+        alert('Error: ' + error.message);
+    }
 }
 
 // Utility functions
@@ -581,31 +825,39 @@ function showSuccess() {
 
 async function pollPaymentStatus(paymentId) {
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 60; // Increased attempts for mobile money
+    const pollInterval = 3000; // Poll every 3 seconds
     
     const checkStatus = async () => {
         attempts++;
         
         try {
-            const response = await fetch(`/payment/status/${paymentId}/`);
+            const response = await fetch(`/payment/status/${paymentId}/`); // Assuming this URL exists
             const data = await response.json();
             
             if (data.is_completed) {
                 showSuccess();
+                // Optionally redirect directly to order confirmation page
+                // window.location.href = `/checkout/order-confirmation/${data.order_id}/`;
+                return;
+            }
+            if (data.is_failed || data.is_cancelled) {
+                hideLoading();
+                alert('Payment ' + data.status + '. Please try again or choose another method.');
                 return;
             }
             
             if (attempts >= maxAttempts) {
                 hideLoading();
-                alert('Payment timeout. Please check your phone and refresh the page.');
+                alert('Payment timeout. Please check your phone and refresh the page or check your order history.');
                 return;
             }
             
-            setTimeout(checkStatus, 5000);
+            setTimeout(checkStatus, pollInterval);
         } catch (error) {
             console.error('Status check error:', error);
             if (attempts < maxAttempts) {
-                setTimeout(checkStatus, 5000);
+                setTimeout(checkStatus, pollInterval);
             } else {
                 hideLoading();
                 alert('Error checking payment status.');
@@ -618,11 +870,32 @@ async function pollPaymentStatus(paymentId) {
 
 // Initialize default selection
 document.addEventListener('DOMContentLoaded', function() {
-    // Select first payment method by default
-    const firstMethod = document.querySelector('.payment-method-card');
-    if (firstMethod) {
-        const methodId = firstMethod.id.replace('card', '');
-        selectPaymentMethod(methodId.toLowerCase());
+    // Select the first available payment method by default
+    if (availableMethodsParsed && availableMethodsParsed.length > 0) {
+        selectPaymentMethod(availableMethodsParsed[0].gateway);
+    }
+
+    // Set initial country selection (if from user profile or geo-ip)
+    const countryRadio = document.getElementById('country' + userCountry);
+    if (countryRadio) {
+        countryRadio.checked = true;
+    }
+
+    // Select the initial shipping method based on context (if any)
+    const initialShippingMethodInput = document.querySelector(`input[name="shipping_method"][value="${selectedShippingMethodId}"]`);
+    if (initialShippingMethodInput) {
+        initialShippingMethodInput.checked = true;
+        const initialShippingCard = initialShippingMethodInput.closest('.shipping-method-card');
+        if (initialShippingCard) {
+            initialShippingCard.classList.add('selected');
+        }
+    }
+    updateOrderSummary(); // Ensure totals are displayed correctly on load
+
+    // Attach event listener for Apply Coupon button
+    const applyCouponBtn = document.getElementById('applyCouponBtn');
+    if (applyCouponBtn) {
+        applyCouponBtn.addEventListener('click', applyCoupon);
     }
 });
 </script>

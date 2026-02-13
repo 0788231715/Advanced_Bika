@@ -1,0 +1,197 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Storage Dashboard - Bika{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for storage staff navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-warehouse me-2"></i>Storage Dashboard</h2>
+                <a href="{% url 'bika:storage_inventory' %}" class="btn btn-primary">
+                    <i class="fas fa-boxes me-2"></i>Manage Inventory
+                </a>
+            </div>
+
+            <!-- Overview Cards -->
+            <div class="row mb-4">
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-primary h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                        Total Items in Storage</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_items_in_storage }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-boxes fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-success h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                        Recent Check-ins</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ recent_checkins }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-arrow-alt-circle-down fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-info h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                        Recent Check-outs</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ recent_checkouts }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-arrow-alt-circle-up fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Alerts -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Inventory Alerts</h5>
+                </div>
+                <div class="card-body">
+                    {% if inventory_alerts %}
+                    <ul class="list-group list-group-flush">
+                        {% for alert in inventory_alerts %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ alert.item.name }}</strong> is <span class="text-danger">{{ alert.alert_type }}</span>
+                                <small class="text-muted ms-3">{{ alert.created_at|date:"M d, H:i" }}</small>
+                            </div>
+                            <div>
+                                <span class="badge bg-danger">{{ alert.current_quantity }} left</span>
+                                <a href="{% url 'bika:add_edit_inventory_item' alert.item.id %}" class="btn btn-sm btn-outline-info ms-2">Manage</a>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-bell-slash fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No inventory alerts at this time.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Recent Activity (Check-ins/Check-outs) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Recent Inventory Movements</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_movements %}
+                    <ul class="list-group list-group-flush">
+                        {% for movement in recent_movements %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-{% if movement.type == 'check_in' %}arrow-alt-circle-down text-success{% else %}arrow-alt-circle-up text-danger{% endif %} me-2"></i>
+                                {{ movement.item.name }} ({{ movement.quantity }})
+                                <small class="text-muted ms-3">{{ movement.created_at|date:"M d, H:i" }}</small>
+                            </div>
+                            <div>
+                                <span class="badge bg-secondary">{{ movement.location.name }}</span>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-exchange-alt fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No recent inventory movements.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item"><a href="{% url 'bika:storage_inventory' %}" class="text-decoration-none"><i class="fas fa-boxes me-2"></i>View All Inventory</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:storage_check_in' %}" class="text-decoration-none"><i class="fas fa-sign-in-alt me-2"></i>Check-in Items</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:storage_check_out' %}" class="text-decoration-none"><i class="fas fa-sign-out-alt me-2"></i>Check-out Items</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item"><a href="{% url 'bika:storage_transfer' %}" class="text-decoration-none"><i class="fas fa-exchange-alt me-2"></i>Transfer Stock</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:storage_locations' %}" class="text-decoration-none"><i class="fas fa-map-marker-alt me-2"></i>Manage Locations</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:user_settings' %}" class="text-decoration-none"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .border-left-primary {
+        border-left: 0.25rem solid #007bff !important;
+    }
+    .border-left-success {
+        border-left: 0.25rem solid #28a745 !important;
+    }
+    .border-left-info {
+        border-left: 0.25rem solid #17a2b8 !important;
+    }
+    .text-xs {
+        font-size: 0.7rem;
+    }
+    .font-weight-bold {
+        font-weight: 700;
+    }
+    .text-gray-800 {
+        color: #5a5c69 !important;
+    }
+    .card-body {
+        flex: 1 1 auto;
+        padding: 1.25rem;
+    }
+    .no-gutters {
+        margin-right: 0;
+        margin-left: 0;
+    }
+    .card.shadow-sm {
+        border: none;
+        border-radius: 0.5rem;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends 'bika/pages/admin/base_admin.html' %}
+{% load static %}
+
+{% block title %}Check-Out Inventory | Bika Admin{% endblock %}
+
+{% block page_title %}Check-Out Inventory{% endblock %}
+{% block page_subtitle %}Record items being removed from storage locations{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{% url 'bika:storage_dashboard' %}">Storage Dashboard</a></li>
+<li class="breadcrumb-item active">Check-Out</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-arrow-alt-circle-up me-2"></i>Check-Out Items</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'bika:storage_check_out' %}">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_sku" class="form-label">Item SKU</label>
+                        <input type="text" class="form-control" id="id_sku" name="sku" required placeholder="Enter item SKU or scan barcode">
+                        <div class="form-text">Scan or type the Stock Keeping Unit (SKU) of the item.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="id_quantity" name="quantity" required min="1" value="1">
+                        <div class="form-text">Enter the quantity of items being checked out.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_notes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="id_notes" name="notes" rows="3" placeholder="Add any relevant notes about this check-out"></textarea>
+                        <div class="form-text">e.g., reason for removal, recipient.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-admin btn-lg w-100">
+                        <i class="fas fa-check-circle me-2"></i>Confirm Check-Out
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

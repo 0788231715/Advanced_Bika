@@ -47,6 +47,25 @@
                                 </small>
                             </div>
 
+                            <div class="row text-center mb-3">
+                                <div class="col-6 mb-2">
+                                    <h6 class="mb-0 text-primary">{{ site.total_inventory_items }}</h6>
+                                    <small class="text-muted">Inventory Items</small>
+                                </div>
+                                <div class="col-6 mb-2">
+                                    <h6 class="mb-0 text-success">{{ site.distinct_products }}</h6>
+                                    <small class="text-muted">Distinct Products</small>
+                                </div>
+                                <div class="col-6">
+                                    <h6 class="mb-0 text-info">{{ site.distinct_categories }}</h6>
+                                    <small class="text-muted">Categories</small>
+                                </div>
+                                <div class="col-6">
+                                    <h6 class="mb-0 text-warning">{{ site.distinct_clients }}</h6>
+                                    <small class="text-muted">Clients</small>
+                                </div>
+                            </div>
+
                             {% if site.latitude and site.longitude %}
                             <div class="mb-3">
                                 <small class="text-muted">

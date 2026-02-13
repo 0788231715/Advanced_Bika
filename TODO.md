@@ -1,73 +1,79 @@
-# Bika Project TODO List
+This file outlines the tasks to be completed for the Bika Project.
 
-This is a comprehensive TODO list for the Bika project. The tasks are categorized to make it easier to track the progress.
+- [ ] **Overall Goal:** Understand the Bika_Project's purpose, features, and objectives, and then enhance the website by ensuring all intended pages are accessible via URLs and implementing additional "needed" functionalities.
 
-## Phase 1: Initial Setup & Code Cleanup
+### Task List:
 
-- [ ] **Code Audit & Refactoring:**
-    - [ ] Move models from `bika/models.py` to their respective apps (`products`, `users`, etc.).
-    - [ ] Review and refactor views to use class-based views where appropriate.
-    - [ ] Clean up `bika/urls.py` by organizing URLs into smaller, more manageable files.
-- [ ] **Dependency Management:**
-    - [ ] Update `requirements.txt` with the latest stable versions of the packages.
-    - [ ] Remove unused dependencies.
-- [ ] **Testing:**
-    - [ ] Write unit tests for all models.
-    - [ ] Write unit tests for all views.
-    - [ ] Write integration tests for the main user flows (e.g., user registration, product purchase).
-    - [ ] Set up a testing framework like `pytest` for more advanced testing features.
+1.  **Understand project purpose, features, and objectives.**
+    -   Status: **COMPLETED**
 
-## Phase 2: Security Enhancements
+2.  **Confirm product registration for site owner and customer/vendor.**
+    -   Status: **COMPLETED**
 
-- [ ] **User Authentication:**
-    - [ ] Implement two-factor authentication (2FA) for all users.
-    - [ ] Add rate limiting to login and password reset views to prevent brute-force attacks.
-- [ ] **Data Security:**
-    - [ ] Encrypt sensitive data in the database (e.g., user's personal information, API keys).
-    - [ ] Implement a content security policy (CSP) to prevent cross-site scripting (XSS) attacks.
-- [ ] **API Security:**
-    - [ ] Use token-based authentication (e.g., JWT) for all API endpoints.
-    - [ ] Implement API rate limiting to prevent abuse.
+3.  **Implement "Buy Now" button for direct product purchase.**
+    -   Status: **COMPLETED**
 
-## Phase 3: Warehousing & Inventory Management
+4.  **Confirm customer self-registration.**
+    -   Status: **COMPLETED**
 
-- [ ] **Warehouse Management:**
-    - [ ] Implement a more advanced warehouse management system with support for multiple warehouses, zones, and bins.
-    - [ ] Add a visual warehouse layout designer.
-- [ ] **Inventory Tracking:**
-    - [ ] Implement real-time inventory tracking using barcodes or RFID tags.
-    - [ ] Add support for inventory adjustments, transfers, and cycle counts.
-- [ ] **Supplier Management:**
-    - [ ] Create a supplier portal for managing suppliers, purchase orders, and shipments.
+5.  **Confirm customer product registration (denied for regular customer, allowed for vendor).**
+    -   Status: **COMPLETED**
 
-## Phase 4: DevOps & Deployment
+6.  **Analyze template usage and confirm active pages.**
+    -   Status: **COMPLETED**
 
-- [ ] **Containerization:**
-    - [ ] Dockerize the application for easier development and deployment.
-    - [ ] Create a `docker-compose.yml` file for setting up the local development environment.
-- [ ] **Continuous Integration & Continuous Deployment (CI/CD):**
-    - [ ] Set up a CI/CD pipeline using GitHub Actions or GitLab CI/CD.
-    - [ ] Automate the testing and deployment process.
-- [ ] **Monitoring & Logging:**
-    - [ ] Integrate a monitoring tool like Prometheus or Datadog to monitor the application's performance.
-    - [ ] Set up a centralized logging system using the ELK stack or a similar solution.
+7.  **Implement view and URL for `bika/pages/product_comparison.html`.**
+    -   Status: **COMPLETED**
 
-## Phase 5: User & Admin Experience
+8.  **Implement view and URL for `bika/pages/manager/team.html`.**
+    -   Status: **COMPLETED**
 
-- [ ] **Frontend:**
-    - [ ] Redesign the frontend using a modern JavaScript framework like React or Vue.js.
-    - [ ] Improve the user experience by making the interface more intuitive and user-friendly.
-- [ ] **Admin Panel:**
-    - [ ] Customize the Django admin panel to provide a more tailored experience for the administrators.
-    - [ ] Add custom dashboards and reports to the admin panel.
-- [ ] **Internationalization:**
-    - [ ] Add support for multiple languages and currencies.
+9.  **Implement view and URL for `bika/pages/storage/add_edit_inventory_item.html`.**
+    -   Status: **COMPLETED**
 
-## Phase 6: AI & Machine Learning
+10. **Implement `Address` model and user address book functionality.**
+    -   Status: **COMPLETED**
 
-- [ ] **Model Retraining:**
-    - [ ] Implement a system for automatically retraining the machine learning models with new data.
-- [ ] **A/B Testing:**
-    - [ ] Add a feature for A/B testing different machine learning models to see which one performs better.
-- [ ] **Explainable AI (XAI):**
-    - [ ] Integrate an XAI library like LIME or SHAP to provide insights into why the machine learning models make certain predictions.
+11. **Populate `products_by_category.html` template.**
+    -   Status: **COMPLETED**
+
+12. **Create and populate `ai/train_model.html` template.**
+    -   Status: **COMPLETED**
+
+13. **Populate `storage/check_in.html`, `storage/check_out.html`, `storage/locations.html`, `storage/transfer.html` templates.**
+    -   Status: **COMPLETED**
+
+14. **Implement Manager Delivery Detail page.**
+    -   Status: **COMPLETED**
+
+15. **Identify all empty or boilerplate templates and compile a comprehensive report for the user, then populate them.**
+    *   **Subtasks:**
+        *   [COMPLETED] Finish iterating through all HTML files to identify empty/minimal ones.
+        *   [COMPLETED] For each empty/minimal template, find its corresponding view.
+        *   [COMPLETED] Describe what's there, what it should do, and what's missing for each.
+        *   [COMPLETED] Present the final report.
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\email\alert_notification.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\email\invoice.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\email\order_confirmation.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\email\password_reset.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\email\welcome.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\head.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\modals\add_to_cart.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\modals\delete_confirmation.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\modals\quick_view.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\scripts.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\widgets\cart_widget.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\widgets\filter_widget.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\includes\widgets\search_widget.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\client\create_request.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\client\dashboard.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\client\deliveries.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\client\requests.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\manager\dashboard.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\manager\deliveries.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\manager\team.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\storage\dashboard.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\product_comparison.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\storage\add_edit_inventory_item.html`
+        *   [COMPLETED] Populate `C:\Users\Anum\OneDrive\Desktop\Academic\AI_computer\project\Bika_Project\templates\bika\pages\vendor_products.html`
+    -   Status: **COMPLETED**

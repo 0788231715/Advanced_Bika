@@ -57,11 +57,15 @@ urlpatterns = [
     
     # ==================== ADMIN DASHBOARD ====================
     path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),
-    
+    path('admin/register-client/', views.register_client, name='register_client'),
+    # In your urlpatterns
+    path('api/dashboard/stats/', views.dashboard_stats_api, name='dashboard_stats_api'),
     # ==================== PRODUCTS ====================
     path('products/', views.product_list_view, name='product_list'),
     path('products/category/<slug:category_slug>/', views.products_by_category_view, name='products_by_category'),
     path('products/<slug:slug>/', views.product_detail_view, name='product_detail'),
+    path('products/<int:product_id>/buy-now/', views.buy_now_product, name='buy_now_product'),
+    path('products/compare/', views.product_comparison_view, name='product_comparison'),
     path('products/search/', views.product_search_view, name='product_search'),
     path('products/<int:product_id>/review/', views.add_review, name='add_review'),
     
@@ -69,6 +73,7 @@ urlpatterns = [
     path('vendor/dashboard/', views.vendor_dashboard, name='vendor_dashboard'),
     path('vendor/products/', views.vendor_product_list, name='vendor_product_list'),
     path('vendor/products/add/', views.vendor_add_product, name='vendor_add_product'),
+    path('vendor/products/add-for-client/', views.add_client_product, name='add_client_product'),
     path('vendor/products/edit/<int:product_id>/', views.vendor_edit_product, name='vendor_edit_product'),
     path('vendor/products/delete/<int:product_id>/', views.vendor_delete_product, name='vendor_delete_product'),
     path('vendor/track-products/', views.track_my_products, name='track_my_products'),
@@ -88,6 +93,12 @@ urlpatterns = [
         path('review/', views.create_review, name='create_review'),
     ])),
     
+    # ==================== USER ADDRESSES ====================
+    path('user/addresses/', views.user_address_book_view, name='user_address_book'),
+    path('user/addresses/add/', views.user_add_edit_address_view, name='user_add_address'),
+    path('user/addresses/edit/<int:address_id>/', views.user_add_edit_address_view, name='user_edit_address'),
+    path('user/addresses/delete/<int:address_id>/', views.user_delete_address_view, name='user_delete_address'),
+    
     # ==================== CART ====================
     path('cart/', views.cart, name='cart'),
     path('cart/add/<int:product_id>/', views.add_to_cart, name='add_to_cart'),
@@ -104,6 +115,7 @@ urlpatterns = [
     # ==================== CHECKOUT & PAYMENT ====================
     path('checkout/', views.checkout, name='checkout'),
     path('checkout/place-order/', views.place_order, name='place_order'),
+    path('checkout/order-confirmation/<int:order_id>/', views.order_confirmation, name='order_confirmation'),
     path('payment/<int:payment_id>/', views.payment_processing, name='payment_processing'),
     path('api/payment/webhook/', views.payment_webhook, name='payment_webhook'),
     
@@ -127,14 +139,17 @@ urlpatterns = [
     # ==================== API ENDPOINTS ====================
     # Product API
     path('api/product/<str:barcode>/', views.api_product_detail, name='api_product_detail'),
+    path('api/delivery-status/<int:delivery_id>/', views.api_delivery_status, name='api_delivery_status'),
+    path('api/delivery/update-status/', views.api_update_delivery_status, name='api_update_delivery_status'), # NEW
     path('api/products/<int:product_id>/analytics/', views.product_analytics_api, name='product_analytics_api'),
-    
-    # AI & Fruit Quality API
+    path('api/delivery/update-status/', views.update_delivery_status, name='api_update_delivery_status'),
     path('api/upload-dataset/', views.upload_dataset, name='upload_dataset'),
+    path('api/inventory/move/', views.storage_check_in, name='api_record_inventory_move'),
     path('api/train-model/', views.train_model, name='train_model'),
     path('api/sensor-data/', views.receive_sensor_data, name='receive_sensor_data'),
     path('api/train-fruit-model/', views.train_fruit_model_api, name='train_fruit_model'),
     path('api/predict-fruit-quality/', views.predict_fruit_quality_api, name='predict_fruit_quality'),
+    path('api/warehouse/layout/<int:location_id>/', views.api_get_warehouse_layout, name='api_get_warehouse_layout'), # NEW
     path('api/storage-compatibility/', views.storage_compatibility_check, name='storage_compatibility'),
     
     # Alerts API
@@ -148,6 +163,7 @@ urlpatterns = [
     
     # Dashboard API endpoints
     path('api/dashboard/sales-analytics/', views.sales_analytics_api, name='sales_analytics_api'),
+    path('api/dashboard/messages-analytics/', views.messages_analytics_api, name='messages_analytics_api'),
     path('api/dashboard/alerts/', views.get_active_alerts, name='get_active_alerts'),
     path('api/dashboard/performance/', views.performance_metrics_api, name='performance_metrics_api'),
     path('api/dashboard/export-inventory/', views.export_inventory_report, name='export_inventory_report'),
@@ -170,6 +186,8 @@ urlpatterns = [
     path('api/batch-scan/', views.batch_product_scan_api, name='batch_scan_api'),
     path('api/product/<int:product_id>/quality-prediction/', views.get_product_quality_prediction, name='quality_prediction_api'),
     path('api/analyze-csv/', views.analyze_csv, name='analyze_csv'),
+    path('api/inventory/move/', views.api_record_inventory_movement, name='api_record_inventory_move'), # NEW
+    path('api/warehouse/layout/<int:location_id>/', views.api_get_warehouse_layout, name='api_get_warehouse_layout'), # NEW
     
     # ==================== AI TRAINING ====================
     path('ai/train-models/', views.train_five_models_view, name='train_models'),
@@ -189,9 +207,13 @@ urlpatterns = [
     path('manager/', views.manager_dashboard, name='manager_dashboard'),
     path('manager/inventory/', views.manager_inventory, name='manager_inventory'),
     path('manager/deliveries/', views.manager_deliveries, name='manager_deliveries'),
+    path('manager/deliveries/<int:delivery_id>/', views.manager_delivery_detail_view, name='manager_delivery_detail'),
     path('manager/reports/', views.manager_reports, name='manager_reports'),
+    path('manager/team/', views.manager_team_view, name='manager_team'),
     path('manager/deliveries/<int:delivery_id>/update-status/', views.update_delivery_status, name='update_delivery_status'),
     path('manager/deliveries/<int:delivery_id>/assign-staff/', views.assign_delivery_staff, name='assign_delivery_staff'),
+    path('manager/roles/', views.manager_user_role_management, name='manager_user_role_management'),
+    path('manager/roles/edit/<int:user_id>/', views.manager_user_role_management, name='manager_user_role_management_edit'),
 
     # Storage Staff URLs
     path('storage/', views.storage_dashboard, name='storage_dashboard'),
@@ -199,6 +221,8 @@ urlpatterns = [
     path('storage/locations/', views.storage_locations, name='storage_locations'),
     path('storage/check-in/', views.storage_check_in, name='storage_check_in'),
     path('storage/check-out/', views.storage_check_out, name='storage_check_out'),
+    path('storage/inventory/add/', views.storage_add_edit_inventory_item_view, name='storage_add_inventory_item'),
+    path('storage/inventory/edit/<int:item_id>/', views.storage_add_edit_inventory_item_view, name='storage_edit_inventory_item'),
     path('storage/transfer/', views.storage_transfer, name='storage_transfer'),
 
     # Client URLs
@@ -207,6 +231,7 @@ urlpatterns = [
     path('client/inventory/<int:item_id>/', views.client_item_detail, name='client_item_detail'),
     path('client/deliveries/', views.client_deliveries, name='client_deliveries'),
     path('client/deliveries/<int:delivery_id>/', views.client_delivery_detail, name='client_delivery_detail'),
+    path('client/deliveries/<int:delivery_id>/track-map/', views.track_order_map, name='track_order_map'),
     path('client/requests/', views.client_requests, name='client_requests'),
     path('client/requests/create/', views.create_client_request, name='create_client_request'),
     path('client/requests/', views.client_requests_list, name='client_requests_list'),

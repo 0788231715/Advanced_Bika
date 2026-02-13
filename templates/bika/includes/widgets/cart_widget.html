@@ -1,0 +1,126 @@
+{% load static %}
+<div class="cart-widget">
+    <a href="{% url 'bika:cart' %}" class="btn btn-outline-secondary position-relative">
+        <i class="fas fa-shopping-basket"></i>
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="cart-widget-count">
+            {{ cart_count|default:0 }}
+        </span>
+    </a>
+    <div class="cart-summary-dropdown dropdown-menu dropdown-menu-end">
+        <h6 class="dropdown-header">Your Cart (<span id="cart-summary-count">{{ cart_count|default:0 }}</span> items)</h6>
+        <div class="dropdown-divider"></div>
+        <div id="cart-items-list">
+            {% if cart_items %}
+                {% for item in cart_items|slice:":3" %} {# Show up to 3 items in dropdown #}
+                <div class="d-flex align-items-center dropdown-item">
+                    <img src="{% if item.product.images.first %}{{ item.product.images.first.image.url }}{% else %}{% static 'images/placeholder-product.jpg' %}{% endif %}" 
+                         alt="{{ item.product.name }}" class="img-fluid rounded me-2" style="width: 50px; height: 50px; object-fit: cover;">
+                    <div>
+                        <small class="fw-bold">{{ item.product.name }}</small><br>
+                        <small class="text-muted">{{ item.quantity }} x ${{ item.product.price|floatformat:2 }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+                {% if cart_items.count > 3 %}
+                <div class="dropdown-item text-center small text-muted">... and {{ cart_items.count|add:"-3" }} more items</div>
+                {% endif %}
+            {% else %}
+                <div class="dropdown-item text-center text-muted">Your cart is empty</div>
+            {% endif %}
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="d-flex justify-content-between dropdown-item">
+            <strong>Total:</strong>
+            <strong id="cart-summary-total">${{ cart_total|default:"0.00"|floatformat:2 }}</strong>
+        </div>
+        <div class="dropdown-item">
+            <a href="{% url 'bika:cart' %}" class="btn btn-primary btn-sm w-100 mb-1">View Cart</a>
+            <a href="{% url 'bika:checkout' %}" class="btn btn-success btn-sm w-100">Checkout</a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .cart-widget {
+        position: relative;
+        display: inline-block;
+    }
+    .cart-widget .btn {
+        min-width: 45px;
+        min-height: 45px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+    .cart-widget .badge {
+        font-size: 0.7em;
+        padding: 0.35em 0.6em;
+        border-radius: 10px;
+    }
+    .cart-summary-dropdown {
+        padding: 0;
+        min-width: 250px;
+    }
+    .cart-summary-dropdown .dropdown-header {
+        background-color: #f8f9fa;
+        padding: 10px 15px;
+        border-bottom: 1px solid #e9ecef;
+        font-size: 0.9em;
+    }
+    .cart-summary-dropdown .dropdown-item {
+        padding: 8px 15px;
+        font-size: 0.9em;
+    }
+    .cart-summary-dropdown .dropdown-divider {
+        margin: 0;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Example: Update cart widget counts and totals dynamically
+        // This would typically be triggered by AJAX calls for add/remove from cart
+        function updateCartWidget(cartCount, cartTotal, cartItems) {
+            document.getElementById('cart-widget-count').textContent = cartCount;
+            document.getElementById('cart-summary-count').textContent = cartCount;
+            document.getElementById('cart-summary-total').textContent = `$${parseFloat(cartTotal).toFixed(2)}`;
+
+            const cartItemsList = document.getElementById('cart-items-list');
+            cartItemsList.innerHTML = ''; // Clear existing items
+
+            if (cartItems && cartItems.length > 0) {
+                cartItems.slice(0, 3).forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'd-flex align-items-center dropdown-item';
+                    div.innerHTML = `
+                        <img src="${item.image_url || "{% static 'images/placeholder-product.jpg' %}"}" 
+                             alt="${item.name}" class="img-fluid rounded me-2" style="width: 50px; height: 50px; object-fit: cover;">
+                        <div>
+                            <small class="fw-bold">${item.name}</small><br>
+                            <small class="text-muted">${item.quantity} x $${parseFloat(item.price).toFixed(2)}</small>
+                        </div>
+                    `;
+                    cartItemsList.appendChild(div);
+                });
+                if (cartItems.length > 3) {
+                    const moreItemsDiv = document.createElement('div');
+                    moreItemsDiv.className = 'dropdown-item text-center small text-muted';
+                    moreItemsDiv.textContent = `... and ${cartItems.length - 3} more items`;
+                    cartItemsList.appendChild(moreItemsDiv);
+                }
+            } else {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'dropdown-item text-center text-muted';
+                emptyDiv.textContent = 'Your cart is empty';
+                cartItemsList.appendChild(emptyDiv);
+            }
+        }
+
+        // Example: Listen for a custom event if cart updates happen elsewhere
+        // document.addEventListener('cartUpdated', function(e) {
+        //     updateCartWidget(e.detail.count, e.detail.total, e.detail.items);
+        // });
+    });
+</script>

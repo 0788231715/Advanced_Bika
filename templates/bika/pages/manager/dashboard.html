@@ -1,0 +1,186 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Manager Dashboard - Bika{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for manager navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-chart-line me-2"></i>Manager Dashboard</h2>
+                <a href="{% url 'bika:manager_reports' %}" class="btn btn-primary">
+                    <i class="fas fa-file-alt me-2"></i>View Reports
+                </a>
+            </div>
+
+            <!-- Overview Cards -->
+            <div class="row mb-4">
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-primary h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                        Total Inventory Items</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_inventory_items }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-boxes fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-success h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                        Total Orders</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_orders }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-shopping-bag fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-left-info h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                        Active Deliveries</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ active_deliveries }}</div>
+                                </div>
+                                <div class="col-auto">
+                                    <i class="fas fa-truck fa-2x text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity (Orders/Deliveries) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Recent Activity</h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'bika:user_orders' %}" class="btn btn-outline-primary">Orders</a>
+                        <a href="{% url 'bika:manager_deliveries' %}" class="btn btn-outline-primary">Deliveries</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if recent_activity %}
+                    <ul class="list-group list-group-flush">
+                        {% for activity in recent_activity %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                {% if activity.order_number %}
+                                    <i class="fas fa-receipt me-2 text-primary"></i>
+                                    Order #{{ activity.order_number }}
+                                {% else %}
+                                    <i class="fas fa-truck me-2 text-info"></i>
+                                    Delivery #{{ activity.delivery_number }}
+                                {% endif %}
+                                <small class="text-muted ms-3">{{ activity.created_at|date:"M d, H:i" }}</small>
+                            </div>
+                            <div>
+                                {% if activity.status %}
+                                <span class="badge bg-{% if activity.status == 'delivered' or activity.status == 'completed' %}success{% elif activity.status == 'pending' or activity.status == 'open' %}warning{% else %}info{% endif %}">
+                                    {{ activity.get_status_display }}
+                                </span>
+                                {% endif %}
+                                {% if activity.order_number %}
+                                <a href="{% url 'bika:order_detail' activity.id %}" class="btn btn-sm btn-outline-info ms-2">View</a>
+                                {% else %}
+                                <a href="{% url 'bika:manager_delivery_detail' activity.id %}" class="btn btn-sm btn-outline-info ms-2">View</a>
+                                {% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No recent activity to display.</p>
+                        <a href="{% url 'bika:manager_inventory' %}" class="btn btn-primary">Manage Inventory</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Quick Links</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item"><a href="{% url 'bika:manager_inventory' %}" class="text-decoration-none"><i class="fas fa-boxes me-2"></i>Manage Inventory</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:manager_deliveries' %}" class="text-decoration-none"><i class="fas fa-truck me-2"></i>Manage Deliveries</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:manager_team' %}" class="text-decoration-none"><i class="fas fa-users me-2"></i>Manage Team</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item"><a href="{% url 'bika:manager_reports' %}" class="text-decoration-none"><i class="fas fa-chart-pie me-2"></i>View Reports</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:manager_user_role_management' %}" class="text-decoration-none"><i class="fas fa-user-tag me-2"></i>User Roles</a></li>
+                                <li class="list-group-item"><a href="{% url 'bika:user_settings' %}" class="text-decoration-none"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .border-left-primary {
+        border-left: 0.25rem solid #007bff !important;
+    }
+    .border-left-success {
+        border-left: 0.25rem solid #28a745 !important;
+    }
+    .border-left-info {
+        border-left: 0.25rem solid #17a2b8 !important;
+    }
+    .text-xs {
+        font-size: 0.7rem;
+    }
+    .font-weight-bold {
+        font-weight: 700;
+    }
+    .text-gray-800 {
+        color: #5a5c69 !important;
+    }
+    .card-body {
+        flex: 1 1 auto;
+        padding: 1.25rem;
+    }
+    .no-gutters {
+        margin-right: 0;
+        margin-left: 0;
+    }
+    .card.shadow-sm {
+        border: none;
+        border-radius: 0.5rem;
+    }
+</style>
+{% endblock %}

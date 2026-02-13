@@ -1,0 +1,105 @@
+{% load static %}
+<div class="modal fade" id="deleteConfirmationModal" tabindex="-1" aria-labelledby="deleteConfirmationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteConfirmationModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong id="delete-item-name">this item</strong>?</p>
+                <p class="text-danger small">This action cannot be undone. All related data will be permanently removed.</p>
+                <div class="mb-3" id="delete-confirmation-text-group" style="display: none;">
+                    <label for="delete-confirmation-input" class="form-label">
+                        Please type "<strong id="expected-confirmation-text">DELETE</strong>" to confirm:
+                    </label>
+                    <input type="text" class="form-control" id="delete-confirmation-input" placeholder="Type here to confirm">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn" disabled>
+                    <i class="fas fa-trash me-2"></i>Delete Permanently
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Specific styles for this modal if needed */
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var deleteModal = document.getElementById('deleteConfirmationModal');
+        var confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        var deleteItemName = document.getElementById('delete-item-name');
+        var deleteConfirmationTextGroup = document.getElementById('delete-confirmation-text-group');
+        var expectedConfirmationText = document.getElementById('expected-confirmation-text');
+        var deleteConfirmationInput = document.getElementById('delete-confirmation-input');
+
+        let itemIdToDelete = null;
+        let deleteCallback = null;
+        let requiresTextConfirmation = false;
+
+        deleteModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget; 
+            itemIdToDelete = button.getAttribute('data-item-id');
+            var itemName = button.getAttribute('data-item-name') || 'this item';
+            var confirmationText = button.getAttribute('data-confirmation-text'); // Optional: e.g., "DELETE"
+            var callbackFunctionName = button.getAttribute('data-delete-callback'); // Optional JS function name
+
+            deleteItemName.textContent = itemName;
+            confirmDeleteBtn.disabled = true; // Disable by default
+
+            if (confirmationText) {
+                requiresTextConfirmation = true;
+                expectedConfirmationText.textContent = confirmationText;
+                deleteConfirmationTextGroup.style.display = 'block';
+                deleteConfirmationInput.value = ''; // Clear previous input
+            } else {
+                requiresTextConfirmation = false;
+                deleteConfirmationTextGroup.style.display = 'none';
+                confirmDeleteBtn.disabled = false; // Enable if no text confirmation needed
+            }
+
+            deleteCallback = window[callbackFunctionName] || null;
+            if (deleteCallback && typeof deleteCallback !== 'function') {
+                console.error("Invalid callback function provided:", callbackFunctionName);
+                deleteCallback = null;
+            }
+        });
+
+        deleteConfirmationInput.addEventListener('input', function() {
+            if (requiresTextConfirmation) {
+                confirmDeleteBtn.disabled = (this.value !== expectedConfirmationText.textContent);
+            }
+        });
+
+        confirmDeleteBtn.addEventListener('click', function() {
+            if (requiresTextConfirmation && deleteConfirmationInput.value !== expectedConfirmationText.textContent) {
+                alert('Please type the confirmation text exactly to proceed.');
+                return;
+            }
+
+            if (itemIdToDelete && deleteCallback) {
+                deleteCallback(itemIdToDelete);
+            } else {
+                console.warn("No item ID or callback function specified for deletion.");
+                alert("Deletion triggered for item ID: " + itemIdToDelete);
+            }
+            var bsModal = bootstrap.Modal.getInstance(deleteModal);
+            bsModal.hide();
+        });
+    });
+
+    // Example callback function (must be globally accessible)
+    // function myCustomDeleteFunction(itemId) {
+    //     console.log("Custom delete logic for item:", itemId);
+    //     // Perform AJAX request or other delete operation
+    //     alert("Executing custom delete for " + itemId);
+    // }
+</script>

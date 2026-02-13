@@ -1,0 +1,156 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Manage Team - Bika Manager{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for manager navigation #}
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-users-cog me-2"></i>Manage Team</h2>
+                <a href="{% url 'bika:manager_user_role_management' %}" class="btn btn-primary">
+                    <i class="fas fa-user-plus me-2"></i>Manage User Roles
+                </a>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">All Team Members</h5>
+                    <div class="input-group w-50">
+                        <input type="text" class="form-control form-control-sm" placeholder="Search by name, role, email..." aria-label="Search team members">
+                        <button class="btn btn-outline-secondary btn-sm" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <select class="form-select form-select-sm ms-2" aria-label="Filter by role">
+                            <option selected>Filter by Role</option>
+                            <option value="driver">Driver</option>
+                            <option value="storage_staff">Storage Staff</option>
+                            <option value="qc_staff">Quality Control</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if team_members %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Last Login</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for member in team_members %}
+                                <tr>
+                                    <td>
+                                        {% if member.profile_picture %}
+                                            <img src="{{ member.profile_picture.url }}" alt="{{ member.get_full_name }}" class="rounded-circle me-2" style="width: 30px; height: 30px; object-fit: cover;">
+                                        {% else %}
+                                            <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center me-2" style="width: 30px; height: 30px;"><i class="fas fa-user text-muted"></i></div>
+                                        {% endif %}
+                                        <strong>{{ member.get_full_name|default:member.username }}</strong>
+                                    </td>
+                                    <td>{{ member.email }}</td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ member.user_type|title }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if member.is_active %}success{% else %}danger{% endif %}">
+                                            {% if member.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>{{ member.last_login|date:"M d, Y"|default:"Never" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'bika:manager_user_role_management_edit' member.id %}" class="btn btn-outline-primary">
+                                                <i class="fas fa-edit me-1"></i>Edit Role
+                                            </a>
+                                            <button type="button" class="btn btn-outline-danger" onclick="confirmRemove({{ member.id }}, '{{ member.username }}')">
+                                                <i class="fas fa-user-slash me-1"></i>Remove
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No team members found.</p>
+                        <a href="{% url 'bika:manager_user_role_management' %}" class="btn btn-primary">
+                            <i class="fas fa-user-plus me-2"></i>Add Team Member
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Team Performance Overview -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Team Performance Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-4 mb-3">
+                            <h4 class="text-primary">{{ total_members }}</h4>
+                            <p class="text-muted small">Total Members</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h4 class="text-success">{{ active_members }}</h4>
+                            <p class="text-muted small">Active Members</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h4 class="text-info">{{ avg_delivery_time|default:"N/A" }}</h4>
+                            <p class="text-muted small">Avg. Delivery Time</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmRemove(memberId, memberName) {
+        if (confirm(`Are you sure you want to remove ${memberName} from the team? This will not delete their account but remove their role.`)) {
+            // Placeholder for AJAX call to remove member role
+            console.log("Removing member role for:", memberId);
+            // Example AJAX call:
+            // fetch(`/manager/team/${memberId}/remove-role/`, {
+            //     method: 'POST',
+            //     headers: {
+            //         'X-CSRFToken': '{{ csrf_token }}',
+            //         'Content-Type': 'application/json'
+            //     },
+            //     body: JSON.stringify({ 'action': 'remove_role' })
+            // })
+            // .then(response => response.json())
+            // .then(data => {
+            //     if (data.success) {
+            //         alert(`${memberName} role removed successfully.`);
+            //         location.reload();
+            //     } else {
+            //         alert(`Failed to remove role for ${memberName}: ` + data.message);
+            //     }
+            // })
+            // .catch(error => console.error('Error removing role:', error));
+            alert(`Simulating removal of ${memberName}'s role.`);
+            location.reload();
+        }
+    }
+</script>
+{% endblock %}

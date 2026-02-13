@@ -12,6 +12,7 @@ from django.utils import timezone
 
 # Import the FixedRealWorldTrainer
 from bika.fixed_real_world_trainer import FixedRealWorldTrainer
+from bika.models import ProductAIInsights, ProductAlert, Product, TrainedModel # Added ProductAIInsights and other necessary models
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ class EnhancedFruitAIService:
             )
             
             # Generate alerts based on prediction
-            alerts = self._generate_alerts(prediction, product, sensor_data)
+            alerts = self._generate_fruit_alerts(prediction, product, sensor_data)
             
             # Save alerts to database
             for alert_data in alerts:
@@ -169,8 +170,149 @@ class EnhancedFruitAIService:
             'co2_level': 400.0
         }
     
-    def _generate_alerts(self, prediction, product, sensor_data):
-        """Generate alerts based on prediction"""
+    def predict_product_insights(self, product_id):
+        """
+        Generates and stores comprehensive AI insights for a given product,
+        including stock predictions, expiry predictions, and demand forecasts.
+        """
+        try:
+            product = Product.objects.get(id=product_id)
+            insights, created = ProductAIInsights.objects.get_or_create(product=product)
+
+            # --- Simulate AI Predictions (replace with actual model predictions) ---
+            # These simulations will be replaced by calls to trained stock_prediction, sales_forecast models
+            
+            # Simulated Stock Prediction
+            predicted_stock_level = product.stock_quantity - np.random.randint(0, 10) # Simple decrease
+            if predicted_stock_level < 0: predicted_stock_level = 0
+            insights.predicted_stock_level = predicted_stock_level
+
+            # Predicted Out of Stock Date
+            predicted_out_of_stock_date = None
+            if product.stock_quantity > 0:
+                # Simulate daily sales velocity based on historical views or a random factor
+                daily_sales_velocity = np.random.uniform(0.5, 5) # Average 0.5 to 5 units per day
+                if product.views_count > 100:
+                    daily_sales_velocity = np.random.uniform(5, 20) # More popular products sell faster
+                
+                if daily_sales_velocity > 0:
+                    days_to_depletion = product.stock_quantity / daily_sales_velocity
+                    predicted_out_of_stock_date = timezone.now().date() + timedelta(days=int(days_to_depletion))
+            insights.predicted_out_of_stock_date = predicted_out_of_stock_date
+
+            # Predicted Expiry Date (simple simulation, would need a dedicated model for complex scenarios)
+            predicted_expiry_date = None
+            if 'perishable' in product.category.name.lower() or 'fresh' in product.category.name.lower():
+                predicted_expiry_date = timezone.now().date() + timedelta(days=np.random.randint(5, 30))
+            insights.predicted_expiry_date = predicted_expiry_date
+
+            # Simulated Demand Forecasting
+            insights.demand_forecast_next_7_days = np.random.randint(20, 100)
+            insights.demand_forecast_next_30_days = np.random.randint(100, 500)
+
+            # Simulated Quality Prediction (for general products, not just fruit)
+            # This would ideally come from a 'quality_control' model for non-fruit perishables
+            if insights.predicted_expiry_date and insights.predicted_expiry_date < (timezone.now().date() + timedelta(days=7)):
+                insights.predicted_quality_class = np.random.choice(['Fair', 'Poor', 'Critical'], p=[0.4, 0.4, 0.2])
+            else:
+                insights.predicted_quality_class = np.random.choice(['Excellent', 'Good', 'Fair'], p=[0.5, 0.3, 0.2])
+
+            insights.prediction_confidence = round(Decimal(np.random.uniform(0.6, 0.95)), 2)
+            insights.last_analyzed = timezone.now()
+            # insights.analysis_model_used = <reference to a TrainedModel instance> # To be set by actual model
+
+            insights.save()
+
+            # Generate alerts based on these new comprehensive insights
+            new_alerts = self._generate_comprehensive_alerts(insights, product)
+            for alert_data in new_alerts:
+                ProductAlert.objects.create(
+                    product=product,
+                    alert_type=alert_data['type'],
+                    severity=alert_data['priority'],
+                    message=alert_data['message'],
+                    details=json.dumps({
+                        'insight_id': insights.id,
+                        'predicted_stock': insights.predicted_stock_level,
+                        'oos_date': str(insights.predicted_out_of_stock_date),
+                        'expiry_date': str(insights.predicted_expiry_date),
+                        'quality_class': insights.predicted_quality_class,
+                        'confidence': float(insights.prediction_confidence),
+                        'recommendations': alert_data.get('recommendations', [])
+                    })
+                )
+
+            return {
+                'success': True,
+                'message': f'AI insights generated for {product.name}',
+                'insights': insights.id,
+                'alerts_generated': len(new_alerts)
+            }
+
+        except Product.DoesNotExist:
+            logger.error(f"Product with ID {product_id} not found.")
+            return {'error': f"Product with ID {product_id} not found."}
+        except Exception as e:
+            logger.error(f"Error generating comprehensive product insights for product {product_id}: {e}")
+            return {'error': str(e)}
+
+    def _generate_comprehensive_alerts(self, insights: ProductAIInsights, product: Product) -> List[Dict[str, Any]]:
+        """Generate alerts based on comprehensive product AI insights."""
+        alerts = []
+
+        # Alert for Predicted Low Stock / Out of Stock
+        if insights.predicted_stock_level <= product.low_stock_threshold or \
+           (insights.predicted_out_of_stock_date and insights.predicted_out_of_stock_date <= (timezone.now().date() + timedelta(days=7))):
+            alerts.append({
+                'type': 'predicted_low_stock',
+                'priority': 'high',
+                'title': f'{product.name}: Predicted Low Stock',
+                'message': f"AI predicts stock will be low ({insights.predicted_stock_level}) or out of stock by {insights.predicted_out_of_stock_date or 'soon'}.",
+                'recommendations': ['Review demand forecast', 'Initiate reorder process', 'Adjust marketing campaigns']
+            })
+        elif insights.predicted_stock_level <= (product.low_stock_threshold * 2) and insights.predicted_stock_level > product.low_stock_threshold:
+             alerts.append({
+                'type': 'predicted_low_stock',
+                'priority': 'medium',
+                'title': f'{product.name}: Predicted Approaching Low Stock',
+                'message': f"AI predicts stock will be approaching low levels ({insights.predicted_stock_level}) soon.",
+                'recommendations': ['Monitor sales closely', 'Consider reorder']
+            })
+
+        # Alert for Predicted Expiry
+        if insights.predicted_expiry_date and insights.predicted_expiry_date <= (timezone.now().date() + timedelta(days=7)):
+            alerts.append({
+                'type': 'predicted_expiry',
+                'priority': 'critical' if insights.predicted_expiry_date <= timezone.now().date() else 'high',
+                'title': f'{product.name}: Predicted Near Expiry',
+                'message': f"AI predicts product will expire by {insights.predicted_expiry_date}. Current quality: {insights.predicted_quality_class}.",
+                'recommendations': ['Prioritize for sale', 'Offer discounts', 'Remove from inventory if expired']
+            })
+        
+        # Alert for Predicted Poor Quality
+        if insights.predicted_quality_class in ['Poor', 'Critical']:
+            alerts.append({
+                'type': 'predicted_quality_issue',
+                'priority': 'critical' if insights.predicted_quality_class == 'Critical' else 'high',
+                'title': f'{product.name}: Predicted Quality Issue',
+                'message': f"AI predicts product quality as {insights.predicted_quality_class} with {insights.prediction_confidence:.0%} confidence.",
+                'recommendations': ['Inspect physical product', 'Relocate to optimal storage', 'Consider discarding']
+            })
+        
+        # Alert for Unexpected High Demand
+        if insights.demand_forecast_next_7_days > (product.stock_quantity * 1.5) and product.stock_quantity > 0: # Demand 50% higher than current stock
+             alerts.append({
+                'type': 'predicted_high_demand',
+                'priority': 'medium',
+                'title': f'{product.name}: Predicted High Demand',
+                'message': f"AI forecasts high demand ({insights.demand_forecast_next_7_days} units) in the next 7 days, exceeding current stock ratio.",
+                'recommendations': ['Prepare for increased sales', 'Proactive reorder', 'Launch marketing campaign']
+            })
+
+        return alerts
+    
+    def _generate_fruit_alerts(self, prediction, product, sensor_data):
+        """Generate alerts based on prediction (original for fruit quality)"""
         alerts = []
         
         quality = prediction.get('predicted_class', '').lower()

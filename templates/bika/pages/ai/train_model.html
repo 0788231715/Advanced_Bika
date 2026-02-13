@@ -1,0 +1,81 @@
+{% extends 'bika/pages/admin/base_admin.html' %}
+{% load static %}
+
+{% block title %}Train AI Model | Bika Admin{% endblock %}
+
+{% block page_title %}Train AI Model{% endblock %}
+{% block page_subtitle %}Initiate or monitor AI model training processes{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item active">Train AI Model</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="admin-card">
+            <div class="card-header">
+                <h5><i class="fas fa-brain me-2"></i>AI Model Training</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">This page allows you to trigger the training process for AI models. Training can be resource-intensive and may take some time.</p>
+                <p>Use the button below to start a new training job. You can monitor the progress and results on the <a href="{% url 'bika:training_results' %}">Training Results page</a> or <a href="{% url 'bika:model_management' %}">Model Management page</a>.</p>
+
+                <form method="post" action="{% url 'bika:train_model' %}" class="mt-4">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="id_model_type" class="form-label">Model Type</label>
+                        <select name="model_type" id="id_model_type" class="form-select">
+                            <option value="fruit_quality">Fruit Quality Prediction</option>
+                            <!-- Add more model types as needed -->
+                        </select>
+                        <div class="form-text">Select the type of AI model you wish to train.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_dataset_source" class="form-label">Dataset Source</label>
+                        <select name="dataset_source" id="id_dataset_source" class="form-select">
+                            <option value="database">Use existing database data</option>
+                            <option value="upload">Upload new dataset (CSV)</option>
+                        </select>
+                        <div class="form-text">Choose whether to train using data already in the system or an uploaded file.</div>
+                    </div>
+                    
+                    <div id="dataset_upload_section" style="display: none;">
+                        <div class="mb-3">
+                            <label for="id_dataset_file" class="form-label">Upload CSV Dataset</label>
+                            <input type="file" name="dataset_file" id="id_dataset_file" class="form-control" accept=".csv">
+                            <div class="form-text">Upload a CSV file containing your training data.</div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-admin btn-lg mt-3">
+                        <i class="fas fa-play me-2"></i>Start Training
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const datasetSourceSelect = document.getElementById('id_dataset_source');
+        const datasetUploadSection = document.getElementById('dataset_upload_section');
+
+        function toggleDatasetUpload() {
+            if (datasetSourceSelect.value === 'upload') {
+                datasetUploadSection.style.display = 'block';
+            } else {
+                datasetUploadSection.style.display = 'none';
+            }
+        }
+
+        datasetSourceSelect.addEventListener('change', toggleDatasetUpload);
+        toggleDatasetUpload(); // Call on initial load
+    });
+</script>
+{% endblock %}

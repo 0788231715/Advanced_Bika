@@ -1,4 +1,7 @@
 # bika/models.py - ALL DJANGO MODELS IN ONE FILE
+from datetime import timedelta
+from decimal import Decimal
+from venv import logger # Added for global use
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -6,45 +9,349 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import MinValueValidator, MaxValueValidator
 import random
 import string
+from django.utils.html import format_html
 
 # ==================== USER MODELS ====================
-
 class CustomUser(AbstractUser):
     """Custom user model with different user types"""
     USER_TYPE_CHOICES = [
-        ('customer', 'Customer'),
-        ('vendor', 'Vendor'),
         ('admin', 'Administrator'),
+        ('manager', 'Manager'),
+        ('storage_staff', 'Storage Staff'),
+        ('negotiation_team', 'Negotiation Team'),
+        ('vendor', 'Vendor'),
+        ('customer', 'Customer'),
+        ('client', 'Client'),
+        ('driver', 'Driver'),
+        ('quality_controller', 'Quality Controller'),
+        
     ]
     
-    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
-    phone = models.CharField(max_length=20, blank=True)
-    company = models.CharField(max_length=100, blank=True)
-    address = models.TextField(blank=True)
-    profile_picture = models.ImageField(upload_to='profiles/', blank=True, null=True)
+    ROLE_DESCRIPTIONS = {
+        'admin': 'Full system administrator with complete access to all features and settings.',
+        'manager': 'Manages operations, staff, and reports. Can oversee multiple departments.',
+        'storage_staff': 'Handles inventory management, storage operations, and quality checks.',
+        'negotiation_team': 'Responsible for client negotiations, pricing strategies, and contracts.',
+        'vendor': 'Sells products on the platform. Manages their own product listings and orders.',
+        'customer': 'Regular consumer who browses and purchases products from the platform.',
+        'client': 'Business client using specialized services like storage, delivery, and inventory management.',
+        'driver': 'Delivery personnel responsible for transporting goods to customers.',
+        'quality_controller': 'Ensures product quality standards through inspections and monitoring.',
+    }
+    
+    DEFAULT_PERMISSIONS = {
+        'admin': ['all'],
+        'manager': ['view_dashboard', 'manage_products', 'manage_orders', 'view_reports', 
+                    'manage_staff', 'view_users', 'manage_categories'],
+        'storage_staff': ['view_inventory', 'manage_inventory', 'update_stock', 
+                          'view_storage_locations', 'update_quality', 'create_alerts'],
+        'negotiation_team': ['view_clients', 'manage_contracts', 'set_prices', 
+                             'view_negotiations', 'create_proposals'],
+        'vendor': ['create_products', 'manage_own_products', 'view_sales', 
+                   'view_own_orders', 'update_product_status'],
+        'customer': ['browse_products', 'place_orders', 'view_own_orders', 
+                     'write_reviews', 'add_to_cart', 'create_wishlist'],
+        'client': ['view_own_inventory', 'request_delivery', 'view_storage_status',
+                   'manage_own_requests', 'view_invoices', 'download_reports'],
+        'driver': ['view_assigned_deliveries', 'update_delivery_status', 
+                   'upload_delivery_proof', 'view_delivery_routes'],
+        'quality_controller': ['view_quality_readings', 'update_quality_ratings', 
+                               'create_quality_alerts', 'inspect_products', 'view_sensor_data'],
+    }
+    
+    user_type = models.CharField(
+        max_length=20, 
+        choices=USER_TYPE_CHOICES, 
+        default='customer',
+        help_text="Primary user classification that determines base permissions"
+    )
+    
+    phone = models.CharField(max_length=20, blank=True, help_text="Primary contact number")
+    company = models.CharField(max_length=100, blank=True, help_text="Company or organization name")
+    address = models.TextField(blank=True, help_text="Complete physical address")
+    profile_picture = models.ImageField(upload_to='profiles/%Y/%m/', blank=True, null=True)
+    
+    # Verification fields
     email_verified = models.BooleanField(default=False)
     phone_verified = models.BooleanField(default=False)
+    identity_verified = models.BooleanField(default=False, help_text="Government ID verification")
     
     # Additional fields for vendors
-    business_name = models.CharField(max_length=200, blank=True)
+    business_name = models.CharField(max_length=200, blank=True, help_text="Registered business name")
     business_description = models.TextField(blank=True)
-    business_logo = models.ImageField(upload_to='business_logos/', blank=True, null=True)
+    business_logo = models.ImageField(upload_to='business_logos/%Y/%m/', blank=True, null=True)
     business_verified = models.BooleanField(default=False)
+    business_registration_number = models.CharField(max_length=100, blank=True)
+    tax_id = models.CharField(max_length=100, blank=True, verbose_name="Tax ID/VAT Number")
     
+    # Additional fields for drivers
+    driver_license_number = models.CharField(max_length=50, blank=True)
+    vehicle_registration = models.CharField(max_length=50, blank=True)
+    license_expiry_date = models.DateField(null=True, blank=True)
+    
+    # Additional fields for quality controllers
+    certification_number = models.CharField(max_length=100, blank=True)
+    certification_authority = models.CharField(max_length=200, blank=True)
+    
+    # Status fields
+    is_approved = models.BooleanField(default=True, help_text="Whether user is approved to use the system")
+    approval_date = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='approved_users'
+    )
+    
+    # Communication preferences
+    receive_marketing_emails = models.BooleanField(default=True)
+    receive_sms_notifications = models.BooleanField(default=True)
+    receive_push_notifications = models.BooleanField(default=True)
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    last_active = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-date_joined']
+        verbose_name = "User"
+        verbose_name_plural = "Users"
+        indexes = [
+            models.Index(fields=['user_type', 'is_active']),
+            models.Index(fields=['email_verified', 'phone_verified']),
+            models.Index(fields=['business_verified']),
+        ]
     
     def __str__(self):
-        return f"{self.username} ({self.get_user_type_display()})"
+        display_name = self.business_name if self.business_name and self.is_vendor() else self.get_full_name()
+        if not display_name:
+            display_name = self.username
+        return f"{display_name} ({self.get_user_type_display()})"
     
+    def save(self, *args, **kwargs):
+        # Set approval date if user is being approved
+        if self.pk:
+            original = CustomUser.objects.get(pk=self.pk)
+            if not original.is_approved and self.is_approved and not self.approval_date:
+                self.approval_date = timezone.now()
+        
+        # Generate username if not provided (for certain user types)
+        if not self.username and self.email:
+            base_username = self.email.split('@')[0]
+            username = base_username
+            counter = 1
+            while CustomUser.objects.filter(username=username).exists():
+                username = f"{base_username}{counter}"
+                counter += 1
+            self.username = username
+        
+        super().save(*args, **kwargs)
+    
+    # Role checking methods
     def is_vendor(self):
         return self.user_type == 'vendor'
     
     def is_customer(self):
         return self.user_type == 'customer'
+    
+    def is_client(self):
+        return self.user_type == 'client'
+    
+    def is_staff_member(self):
+        """Check if user is any type of staff (not customer/vendor/client)"""
+        staff_types = ['admin', 'manager', 'storage_staff', 'negotiation_team', 
+                      'driver', 'quality_controller']
+        return self.user_type in staff_types
+    
+    def is_admin_or_manager(self):
+        """Check if user has admin or manager privileges"""
+        return self.user_type in ['admin', 'manager']
+    
+    def is_quality_staff(self):
+        """Check if user is involved in quality control"""
+        return self.user_type in ['quality_controller', 'storage_staff']
+    
+    # Permission methods
+    def get_role_description(self):
+        """Get human-readable role description"""
+        return self.ROLE_DESCRIPTIONS.get(self.user_type, 'No description available')
+    
+    def get_default_permissions(self):
+        """Get default permissions for this user type"""
+        return self.DEFAULT_PERMISSIONS.get(self.user_type, [])
+    
+    def has_permission(self, permission_code):
+        """
+        Check if user has a specific permission based on their role.
+        This works in conjunction with UserRole model.
+        """
+        try:
+            # First check UserRole permissions
+            if hasattr(self, 'user_role'):
+                return self.user_role.has_permission(permission_code)
+            
+            # Fallback to default permissions for this user type
+            default_perms = self.get_default_permissions()
+            if 'all' in default_perms:
+                return True
+            return permission_code in default_perms
+        except Exception:
+            return False
+    
+    # Business logic methods
+    def can_list_products(self):
+        """Check if user can list products for sale"""
+        return self.user_type in ['vendor', 'admin', 'manager']
+    
+    def can_manage_inventory(self):
+        """Check if user can manage inventory"""
+        return self.user_type in ['storage_staff', 'admin', 'manager', 'client']
+    
+    def can_view_dashboard(self):
+        """Check if user can view admin dashboard"""
+        return self.user_type in ['admin', 'manager', 'storage_staff', 'negotiation_team']
+    
+    def can_manage_deliveries(self):
+        """Check if user can manage deliveries"""
+        return self.user_type in ['driver', 'admin', 'manager', 'storage_staff']
+    
+    def can_inspect_quality(self):
+        """Check if user can perform quality inspections"""
+        return self.user_type in ['quality_controller', 'storage_staff', 'admin', 'manager']
+    
+    # Verification methods
+    def is_fully_verified(self):
+        """Check if user has completed all verification steps"""
+        if self.is_vendor():
+            return all([
+                self.email_verified,
+                self.phone_verified,
+                self.business_verified,
+                self.identity_verified
+            ])
+        elif self.user_type in ['driver', 'quality_controller']:
+            return all([
+                self.email_verified,
+                self.phone_verified,
+                self.identity_verified
+            ])
+        else:
+            return self.email_verified and self.phone_verified
+    
+    def get_verification_status(self):
+        """Get verification status as percentage"""
+        required_verifications = 2  # email + phone (minimum)
+        
+        if self.is_vendor():
+            required_verifications = 4  # email, phone, business, identity
+        elif self.user_type in ['driver', 'quality_controller']:
+            required_verifications = 3  # email, phone, identity
+        
+        verified_count = sum([
+            self.email_verified,
+            self.phone_verified,
+            self.business_verified if hasattr(self, 'business_verified') else False,
+            self.identity_verified
+        ])
+        
+        return (verified_count / required_verifications) * 100
+    
+    # Display methods
+    def get_display_name(self):
+        """Get the best display name for the user"""
+        if self.business_name and self.is_vendor():
+            return self.business_name
+        elif self.get_full_name():
+            return self.get_full_name()
+        else:
+            return self.username
+    
+    def get_role_badge(self):
+        """Get HTML badge for user role"""
+        role_colors = {
+            'admin': 'danger',
+            'manager': 'warning',
+            'storage_staff': 'info',
+            'negotiation_team': 'primary',
+            'vendor': 'success',
+            'customer': 'secondary',
+            'client': 'dark',
+            'driver': 'light',
+            'quality_controller': 'info',
+        }
+        
+        color = role_colors.get(self.user_type, 'secondary')
+        return format_html(
+            '<span class="badge badge-{}">{}</span>',
+            color,
+            self.get_user_type_display()
+        )
+    
+    # Activity methods
+    def update_last_active(self):
+        """Update last active timestamp"""
+        self.last_active = timezone.now()
+        self.save(update_fields=['last_active'])
+    
+    def get_activity_status(self):
+        """Get user activity status"""
+        if not self.last_active:
+            return "Never active"
+        
+        delta = timezone.now() - self.last_active
+        if delta.days < 1:
+            return "Active today"
+        elif delta.days < 7:
+            return f"Active {delta.days} days ago"
+        else:
+            return f"Inactive for {delta.days} days"
+    
+    # Model URLs
+    def get_absolute_url(self):
+        return reverse('bika:user_profile', kwargs={'username': self.username})
+    
+    def get_admin_url(self):
+        return reverse('admin:bika_customuser_change', args=[self.id])
+
+
+# ==================== ADDRESS MODEL (MOVED OUTSIDE CustomUser) ====================
+class Address(models.Model):
+    """User Address Book"""
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='addresses')
+    title = models.CharField(max_length=100, blank=True, help_text="e.g., Home, Work, Aunt's House")
+    full_name = models.CharField(max_length=255)
+    phone_number = models.CharField(max_length=20)
+    street_address = models.CharField(max_length=255)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
+    country = models.CharField(max_length=100, default="Tanzania")
+    is_default_shipping = models.BooleanField(default=False)
+    is_default_billing = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name_plural = "Addresses"
+        ordering = ['-created_at']
+        unique_together = ('user', 'title')
+    
+    def __str__(self):
+        return f"{self.full_name} - {self.street_address}, {self.city}"
+    
+    def save(self, *args, **kwargs):
+        # Ensure only one default shipping address per user
+        if self.is_default_shipping:
+            Address.objects.filter(user=self.user, is_default_shipping=True).exclude(pk=self.pk).update(is_default_shipping=False)
+        # Ensure only one default billing address per user
+        if self.is_default_billing:
+            Address.objects.filter(user=self.user, is_default_billing=True).exclude(pk=self.pk).update(is_default_billing=False)
+        super().save(*args, **kwargs)
+
 
 # ==================== CORE MODELS ====================
-
 class ProductCategory(models.Model):
     """Product category model"""
     name = models.CharField(max_length=100)
@@ -64,6 +371,7 @@ class ProductCategory(models.Model):
     
     def get_absolute_url(self):
         return reverse('bika:products_by_category', kwargs={'category_slug': self.slug})
+
 
 class Product(models.Model):
     """Main product model"""
@@ -89,7 +397,8 @@ class Product(models.Model):
     barcode = models.CharField(max_length=100, blank=True, unique=True, null=True)
     description = models.TextField()
     short_description = models.TextField(max_length=300, blank=True)
-    
+    image = models.ImageField(upload_to='products/', blank=True, null=True) # Main product image
+
     # Categorization
     category = models.ForeignKey(ProductCategory, on_delete=models.CASCADE, related_name='products')
     tags = models.CharField(max_length=500, blank=True, help_text="Comma-separated tags")
@@ -123,9 +432,33 @@ class Product(models.Model):
     condition = models.CharField(max_length=20, choices=CONDITION_CHOICES, default='new')
     is_featured = models.BooleanField(default=False)
     is_digital = models.BooleanField(default=False, verbose_name="Digital Product")
+
+    PRODUCT_TYPE_CHOICES = [
+        ('public', 'Public E-commerce Product'),
+        ('private', 'Private Client Stock Template'),
+    ]
+    product_type = models.CharField(
+        max_length=20,
+        choices=PRODUCT_TYPE_CHOICES,
+        default='public',
+        help_text="Determines if the product is for public sale or a template for private client stock."
+    )
+    
+    # Client-specific fields
+    owner = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='owned_products',
+                             limit_choices_to={'user_type': 'client'}, null=True, blank=True)
+    storage_charges = models.DecimalField(max_digits=10, decimal_places=2, default=0.00,
+                                         help_text="Charges to the client for storing this product.")
+    client_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00,
+                                      help_text="Price charged to the client for this product.")
+    is_approved = models.BooleanField(default=False, help_text="Whether this product has been approved by an admin.")
+    is_available = models.BooleanField(default=True, help_text="Whether this product is currently available for sale.")
     
     # Vendor Information
-    vendor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, limit_choices_to={'user_type': 'vendor'})
+    vendor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='listed_products', limit_choices_to={'user_type': 'vendor'})
+    
+    # Supplier Information (NEW)
+    default_supplier = models.ForeignKey('Supplier', on_delete=models.SET_NULL, null=True, blank=True, related_name='supplied_products')
     
     # SEO
     meta_title = models.CharField(max_length=200, blank=True)
@@ -180,6 +513,7 @@ class Product(models.Model):
             status='active'
         ).exclude(id=self.id)[:limit]
 
+
 class ProductImage(models.Model):
     """Product images model"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
@@ -199,6 +533,7 @@ class ProductImage(models.Model):
             # Ensure only one primary image per product
             ProductImage.objects.filter(product=self.product, is_primary=True).update(is_primary=False)
         super().save(*args, **kwargs)
+
 
 class ProductReview(models.Model):
     """Product reviews model"""
@@ -228,8 +563,8 @@ class ProductReview(models.Model):
     def __str__(self):
         return f"Review by {self.user.username} for {self.product.name}"
 
-# ==================== E-COMMERCE MODELS ====================
 
+# ==================== E-COMMERCE MODELS ====================
 class Wishlist(models.Model):
     """User wishlist model"""
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
@@ -242,6 +577,7 @@ class Wishlist(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s wishlist - {self.product.name}"
+
 
 class Cart(models.Model):
     """Shopping cart model"""
@@ -266,6 +602,7 @@ class Cart(models.Model):
         quantity = Decimal(str(self.quantity))
         return price * quantity
     
+
 class Order(models.Model):
     """Order model"""
     STATUS_CHOICES = [
@@ -282,6 +619,12 @@ class Order(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     shipping_address = models.TextField()
     billing_address = models.TextField()
+    shipping_method = models.ForeignKey('ShippingMethod', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    
+    coupon = models.ForeignKey('Coupon', on_delete=models.SET_NULL, null=True, blank=True)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -297,6 +640,7 @@ class Order(models.Model):
             self.order_number = f"ORD{timezone.now().strftime('%Y%m%d')}{random_str}"
         super().save(*args, **kwargs)
 
+
 class OrderItem(models.Model):
     """Order items model"""
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
@@ -311,8 +655,8 @@ class OrderItem(models.Model):
     def total_price(self):
         return self.price * self.quantity
 
-# ==================== FRUIT MONITORING MODELS ====================
 
+# ==================== FRUIT MONITORING MODELS ====================
 class FruitType(models.Model):
     """Different types of fruits"""
     name = models.CharField(max_length=100, unique=True)
@@ -335,6 +679,7 @@ class FruitType(models.Model):
     
     def __str__(self):
         return self.name
+
 
 class FruitBatch(models.Model):
     """Batch of fruits for monitoring"""
@@ -379,6 +724,7 @@ class FruitBatch(models.Model):
             remaining = (self.expected_expiry - timezone.now()).days
             return max(remaining, 0)
         return 0
+
 
 # Update Product model to include fruit relationships (add these to existing Product model)
 # Note: We've already added these fields to the Product model above
@@ -427,8 +773,8 @@ class FruitQualityReading(models.Model):
     def __str__(self):
         return f"{self.fruit_batch.batch_number} - {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
 
-# ==================== STORAGE & SENSOR MODELS ====================
 
+# ==================== STORAGE & SENSOR MODELS ====================
 class StorageLocation(models.Model):
     """Storage location for products"""
     name = models.CharField(max_length=200)
@@ -455,6 +801,7 @@ class StorageLocation(models.Model):
         if self.capacity > 0:
             return (self.current_occupancy / self.capacity) * 100
         return 0
+
 
 class RealTimeSensorData(models.Model):
     """Real-time sensor data model"""
@@ -492,8 +839,8 @@ class RealTimeSensorData(models.Model):
     def __str__(self):
         return f"{self.sensor_type} - {self.value}{self.unit}"
 
-# ==================== AI & DATASET MODELS ====================
 
+# ==================== AI & DATASET MODELS ====================
 class ProductDataset(models.Model):
     """Product datasets for AI training"""
     DATASET_TYPES = [
@@ -516,6 +863,7 @@ class ProductDataset(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_dataset_type_display()})"
 
+
 class TrainedModel(models.Model):
     """Trained AI models"""
     MODEL_TYPES = [
@@ -537,8 +885,8 @@ class TrainedModel(models.Model):
     def __str__(self):
         return f"{self.name} - {self.get_model_type_display()}"
 
-# ==================== ALERT & NOTIFICATION MODELS ====================
 
+# ==================== ALERT & NOTIFICATION MODELS ====================
 class ProductAlert(models.Model):
     """Product quality and stock alerts"""
     ALERT_TYPES = [
@@ -548,6 +896,14 @@ class ProductAlert(models.Model):
         ('temperature_anomaly', 'Temperature Anomaly'),
         ('humidity_issue', 'Humidity Issue'),
         ('ai_anomaly', 'AI Detected Anomaly'),
+        ('predicted_low_stock', 'Predicted Low Stock'), # New AI Alert Type
+        ('predicted_expiry', 'Predicted Expiry'),       # New AI Alert Type
+        ('predicted_quality_issue', 'Predicted Quality Issue'), # New AI Alert Type
+        ('predicted_high_demand', 'Predicted High Demand'), # New AI Alert Type
+        ('movement_anomaly', 'Inventory Movement Anomaly'), # NEW
+        ('transfer_delay', 'Inventory Transfer Delay'),     # NEW
+        ('delivery_delay', 'Delivery Delay'),               # NEW
+        ('driver_issue', 'Driver Issue Alert'),             # NEW
     ]
     
     SEVERITY_CHOICES = [
@@ -557,7 +913,8 @@ class ProductAlert(models.Model):
         ('critical', 'Critical'),
     ]
     
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, help_text="The general product definition (optional if inventory_item is set).")
+    inventory_item = models.ForeignKey('InventoryItem', on_delete=models.CASCADE, null=True, blank=True, related_name='alerts', help_text="The specific inventory item instance (if alert is item-specific).")
     alert_type = models.CharField(max_length=50, choices=ALERT_TYPES)
     severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
     message = models.TextField()
@@ -566,12 +923,26 @@ class ProductAlert(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     resolved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Link to Delivery (NEW)
+    delivery = models.ForeignKey('Delivery', on_delete=models.SET_NULL, null=True, blank=True, related_name='alerts')
     
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['product']),
+            models.Index(fields=['inventory_item']),
+            models.Index(fields=['alert_type']),
+            models.Index(fields=['severity']),
+            models.Index(fields=['is_resolved']),
+        ]
     
     def __str__(self):
-        return f"{self.get_alert_type_display()} - {self.product.name}"
+        if self.inventory_item:
+            return f"{self.get_alert_type_display()} - {self.inventory_item.name}"
+        elif self.product:
+            return f"{self.get_alert_type_display()} - {self.product.name}"
+        return f"{self.get_alert_type_display()} - ID: {self.pk}"
 
 class Notification(models.Model):
     """User notifications"""
@@ -597,8 +968,134 @@ class Notification(models.Model):
     def __str__(self):
         return f"{self.title} - {self.user.username}"
 
-# ==================== PAYMENT MODELS ====================
 
+class NotificationSettings(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='notification_settings')
+    email_notifications = models.BooleanField(default=True)
+    push_notifications = models.BooleanField(default=True)
+    sms_notifications = models.BooleanField(default=False)
+    
+    # Specific notification types
+    order_updates = models.BooleanField(default=True)
+    delivery_updates = models.BooleanField(default=True)
+    inventory_alerts = models.BooleanField(default=True)
+    quality_alerts = models.BooleanField(default=True)
+    system_alerts = models.BooleanField(default=True)
+    promotions = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name_plural = "Notification Settings"
+
+    def __str__(self):
+        return f"Notification Settings for {self.user.username}"
+
+
+class TwoFactorSettings(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='two_factor_settings')
+    is_enabled = models.BooleanField(default=False)
+    method = models.CharField(max_length=50, choices=[
+        ('app', 'Authenticator App'),
+        ('sms', 'SMS'),
+        ('email', 'Email'),
+    ], default='app')
+    phone_number = models.CharField(max_length=20, blank=True) # For SMS method
+    # Add fields for authenticator app secret key, etc., as needed for a full implementation
+
+    class Meta:
+        verbose_name_plural = "Two-Factor Settings"
+
+    def __str__(self):
+        return f"2FA Settings for {self.user.username} (Enabled: {self.is_enabled})"
+
+# ==================== MARKETING MODELS ====================
+class MarketingCampaign(models.Model):
+    """Model for defining and tracking marketing campaigns."""
+    CAMPAIGN_TYPES = [
+        ('email', 'Email Campaign'),
+        ('sms', 'SMS Campaign'),
+        ('in_app', 'In-App Notification'),
+        ('push', 'Push Notification'),
+        ('banner', 'Website Banner'),
+    ]
+
+    TARGET_SEGMENTS = [
+        ('all_users', 'All Users'),
+        ('customers', 'All Customers'),
+        ('vendors', 'All Vendors'),
+        ('new_users', 'New Users (last 30 days)'),
+        ('inactive_users', 'Inactive Users (last 90 days)'),
+        ('high_value_customers', 'High-Value Customers'),
+        ('cart_abandoners', 'Cart Abandoners'),
+        ('category_interest', 'Users Interested in Specific Categories'), # Requires additional logic
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('scheduled', 'Scheduled'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    name = models.CharField(max_length=200, help_text="Name of the marketing campaign")
+    description = models.TextField(blank=True, help_text="Detailed description of the campaign objectives and content")
+    
+    campaign_type = models.CharField(max_length=20, choices=CAMPAIGN_TYPES, default='email')
+    target_segment = models.CharField(max_length=50, choices=TARGET_SEGMENTS, default='all_users')
+    
+    # Content fields (can be JSON for richer content or HTML for emails)
+    subject = models.CharField(max_length=255, blank=True, help_text="Subject line for email/push notifications")
+    content = models.TextField(help_text="Main content of the campaign message (e.g., email body, in-app text)")
+    
+    # Scheduling
+    start_date = models.DateTimeField(default=timezone.now)
+    end_date = models.DateTimeField(null=True, blank=True)
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # Tracking metrics
+    sent_count = models.PositiveIntegerField(default=0)
+    opened_count = models.PositiveIntegerField(default=0) # For email/push
+    clicked_count = models.PositiveIntegerField(default=0) # For email/push/banner
+    conversion_count = models.PositiveIntegerField(default=0) # e.g., orders placed from campaign
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_campaigns')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Marketing Campaign"
+        verbose_name_plural = "Marketing Campaigns"
+
+    def __str__(self):
+        return self.name
+
+    def is_active_campaign(self):
+        """Check if the campaign is currently active."""
+        now = timezone.now()
+        return self.status == 'active' and self.start_date <= now and (self.end_date is None or now <= self.end_date)
+
+    def get_target_users(self):
+        """
+        Returns a QuerySet of CustomUser objects that match the target segment.
+        This method will need to be expanded with more sophisticated segmentation logic.
+        """
+        users = CustomUser.objects.filter(is_active=True)
+        now = timezone.now()
+
+        if self.target_segment == 'customers':
+            users = users.filter(user_type='customer')
+        elif self.target_segment == 'vendors':
+            users = users.filter(user_type='vendor')
+        elif self.target_segment == 'new_users':
+            users = users.filter(date_joined__gte=now - timedelta(days=30))
+        elif self.target_segment == 'inactive_users':
+            users = users.filter(last_login__lt=now - timedelta(days=90))
+        # Add more sophisticated logic for 'high_value_customers', 'cart_abandoners', 'category_interest' later
+        # For 'all_users' or no specific filter, it returns all active users.
+        return users
+# ==================== PAYMENT MODELS ====================
 class Payment(models.Model):
     """Payment model"""
     PAYMENT_METHODS = [
@@ -683,6 +1180,7 @@ class Payment(models.Model):
     def is_successful(self):
         return self.status == 'completed'
 
+
 class PaymentGatewaySettings(models.Model):
     """Enhanced payment gateway configuration"""
     GATEWAY_CHOICES = [
@@ -719,6 +1217,8 @@ class PaymentGatewaySettings(models.Model):
     api_secret = models.CharField(max_length=255, blank=True)
     merchant_id = models.CharField(max_length=100, blank=True)
     webhook_secret = models.CharField(max_length=255, blank=True)
+    api_user = models.CharField(max_length=100, blank=True, help_text="Specific API User ID for some gateways (e.g., MTN MoMo)")
+    api_password = models.CharField(max_length=255, blank=True, help_text="Specific API Password for some gateways (e.g., MTN MoMo API User's API Key)")
     
     # Configuration
     base_url = models.URLField(blank=True)
@@ -734,6 +1234,7 @@ class PaymentGatewaySettings(models.Model):
     def __str__(self):
         return f"{self.get_gateway_display()} Settings"
 
+
 class CurrencyExchangeRate(models.Model):
     """Currency exchange rates"""
     base_currency = models.CharField(max_length=3)
@@ -747,8 +1248,8 @@ class CurrencyExchangeRate(models.Model):
     def __str__(self):
         return f"{self.base_currency}/{self.target_currency}: {self.exchange_rate}"
 
-# ==================== SITE CONTENT MODELS ====================
 
+# ==================== SITE CONTENT MODELS ====================
 class SiteInfo(models.Model):
     """Store site-wide information"""
     name = models.CharField(max_length=200, default="Bika")
@@ -803,6 +1304,7 @@ class SiteInfo(models.Model):
             return
         super().save(*args, **kwargs)
 
+
 class Service(models.Model):
     """Services offered by Bika"""
     name = models.CharField(max_length=200)
@@ -824,6 +1326,7 @@ class Service(models.Model):
     def get_absolute_url(self):
         return reverse('bika:service_detail', kwargs={'slug': self.slug})
 
+
 class Testimonial(models.Model):
     """Customer testimonials"""
     name = models.CharField(max_length=200)
@@ -841,6 +1344,7 @@ class Testimonial(models.Model):
     
     def __str__(self):
         return f"Testimonial from {self.name}"
+
 
 class ContactMessage(models.Model):
     """Contact form messages"""
@@ -872,6 +1376,7 @@ class ContactMessage(models.Model):
         self.replied_at = timezone.now()
         self.save()
 
+
 class FAQ(models.Model):
     """Frequently Asked Questions"""
     question = models.CharField(max_length=300)
@@ -890,7 +1395,6 @@ class FAQ(models.Model):
     
 
 # ==================== USER ROLE MODEL ====================
-
 class UserRole(models.Model):
     """Role-based access control"""
     ROLE_CHOICES = [
@@ -921,8 +1425,8 @@ class UserRole(models.Model):
         """Check if user has specific permission"""
         return permission in self.permissions.get('allowed', [])
 
-# ==================== INVENTORY MODELS ====================
 
+# ==================== INVENTORY MODELS ====================
 class InventoryItem(models.Model):
     """Core inventory item model"""
     ITEM_TYPE_CHOICES = [
@@ -963,6 +1467,11 @@ class InventoryItem(models.Model):
     location = models.ForeignKey('StorageLocation', on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_items')
     storage_reference = models.CharField(max_length=100, blank=True)
     batch_number = models.ForeignKey('FruitBatch', on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_items')
+
+    # Granular Location Details (NEW)
+    shelf_number = models.CharField(max_length=50, blank=True, help_text="Specific shelf number within the storage location.")
+    bin_number = models.CharField(max_length=50, blank=True, help_text="Specific bin number on the shelf.")
+    pallet_id = models.CharField(max_length=100, blank=True, help_text="ID of the pallet the item is on.")
     
     # Time-based
     expiry_date = models.DateField(null=True, blank=True)
@@ -972,7 +1481,7 @@ class InventoryItem(models.Model):
     
     # Ownership
     client = models.ForeignKey(CustomUser, on_delete=models.CASCADE, 
-                             limit_choices_to={'user_type': 'customer'},  # Changed from role to user_type
+                             limit_choices_to={'user_type': 'client'},
                              related_name='client_inventory')
     added_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, 
                                related_name='added_inventory_items')
@@ -1060,6 +1569,7 @@ class InventoryItem(models.Model):
             return duration.days
         return 0
 
+
 class InventoryHistory(models.Model):
     """Track all inventory changes"""
     ACTION_CHOICES = [
@@ -1109,8 +1619,8 @@ class InventoryHistory(models.Model):
         user_name = self.user.username if self.user else 'System'
         return f"{self.item.name} - {self.get_action_display()} by {user_name}"
 
-# ==================== DELIVERY MODELS ====================
 
+# ==================== DELIVERY MODELS ====================
 class Delivery(models.Model):
     """Delivery tracking system"""
     STATUS_CHOICES = [
@@ -1142,7 +1652,7 @@ class Delivery(models.Model):
     
     # Client Information
     client = models.ForeignKey(CustomUser, on_delete=models.CASCADE, 
-                             limit_choices_to={'user_type': 'customer'},
+                             limit_choices_to={'user_type': 'client'},
                              related_name='client_deliveries')
     client_name = models.CharField(max_length=200)
     client_address = models.TextField()
@@ -1187,6 +1697,11 @@ class Delivery(models.Model):
     delivery_notes = models.TextField(blank=True)
     delivery_photos = models.JSONField(default=list, blank=True)  # List of photo URLs
     
+    # Carrier Integration Details (NEW)
+    carrier_name = models.CharField(max_length=100, blank=True, help_text="Name of the shipping carrier (e.g., 'DHL', 'FedEx', 'Local Post').")
+    carrier_service_code = models.CharField(max_length=50, blank=True, help_text="Service code or type used by the carrier (e.g., 'EXP', 'STD', 'Priority').")
+    external_tracking_url = models.URLField(blank=True, help_text="Direct URL to the carrier's tracking page for this delivery.")
+
     # Cost & Payment
     delivery_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     delivery_tax = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -1291,6 +1806,7 @@ class Delivery(models.Model):
             return f"https://bika.com/track/{self.tracking_number}"
         return None
 
+
 class DeliveryItem(models.Model):
     """Items included in a delivery"""
     delivery = models.ForeignKey(Delivery, on_delete=models.CASCADE, related_name='delivery_items')
@@ -1335,6 +1851,7 @@ class DeliveryItem(models.Model):
     def total_price(self):
         return self.quantity * self.unit_price
 
+
 class DeliveryStatusHistory(models.Model):
     """Track delivery status changes"""
     delivery = models.ForeignKey(Delivery, on_delete=models.CASCADE, related_name='status_history')
@@ -1357,7 +1874,8 @@ class DeliveryStatusHistory(models.Model):
     
     def __str__(self):
         return f"{self.delivery.delivery_number}: {self.from_status} → {self.to_status}"    
-    
+
+
 class ClientRequest(models.Model):
     """Client requests for services"""
     REQUEST_TYPES = [
@@ -1388,7 +1906,7 @@ class ClientRequest(models.Model):
     # Basic Information
     request_number = models.CharField(max_length=50, unique=True)
     client = models.ForeignKey(CustomUser, on_delete=models.CASCADE, 
-                             limit_choices_to={'user_type': 'customer'},
+                             limit_choices_to={'user_type': 'client'},
                              related_name='client_requests')
     request_type = models.CharField(max_length=20, choices=REQUEST_TYPES)
     
@@ -1431,4 +1949,397 @@ class ClientRequest(models.Model):
             timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
             random_str = ''.join(random.choices(string.ascii_uppercase, k=3))
             self.request_number = f"REQ-{timestamp}-{random_str}"
-        super().save(*args, **kwargs)    
+        super().save(*args, **kwargs)
+
+# ==================== SHIPPING MODELS ====================
+class ShippingMethod(models.Model):
+    """Defines available shipping methods and their costs/rules."""
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    base_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # Could add more complex pricing logic later (e.g., per_kg_cost, min_order_value_for_free_shipping)
+    is_active = models.BooleanField(default=True)
+    estimated_delivery_min_days = models.IntegerField(default=1)
+    estimated_delivery_max_days = models.IntegerField(default=7)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['base_cost', 'name']
+        verbose_name = "Shipping Method"
+        verbose_name_plural = "Shipping Methods"
+
+    def __str__(self):
+        return self.name
+
+# ==================== SUPPLIER & PURCHASE ORDER MODELS ====================
+class Supplier(models.Model):
+    """Represents a product supplier."""
+    name = models.CharField(max_length=200, unique=True)
+    contact_person = models.CharField(max_length=100, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, default="Tanzania")
+    payment_terms = models.CharField(max_length=100, blank=True, help_text="e.g., Net 30, Due on Receipt")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+class PurchaseOrder(models.Model):
+    """Represents a purchase order made to a supplier."""
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending', 'Pending Approval'),
+        ('ordered', 'Ordered'),
+        ('partially_received', 'Partially Received'),
+        ('received', 'Received'),
+        ('cancelled', 'Cancelled'),
+        ('returned', 'Returned'),
+    ]
+    
+    order_number = models.CharField(max_length=50, unique=True)
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='purchase_orders')
+    ordered_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_purchase_orders')
+    order_date = models.DateTimeField(auto_now_add=True)
+    expected_delivery_date = models.DateField(null=True, blank=True)
+    actual_delivery_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-order_date']
+
+    def __str__(self):
+        return f"PO-{self.order_number} to {self.supplier.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            self.order_number = f"PO-{timestamp}"
+        super().save(*args, **kwargs)
+
+class PurchaseOrderItem(models.Model):
+    """Represents a specific item within a purchase order."""
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='purchase_order_items')
+    quantity = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    # Status for this specific item (e.g., pending, received, backordered)
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('received', 'Received'),
+        ('backordered', 'Backordered'),
+        ('cancelled', 'Cancelled'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['purchase_order', 'product']
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.quantity} x {self.product.name} for PO-{self.purchase_order.order_number}"
+
+    @property
+    def total_price(self):
+        return self.quantity * self.unit_price
+
+class InventoryTransfer(models.Model):
+    """
+    Records the movement of inventory items between storage locations.
+    Can be initiated manually or automatically based on AI forecasts.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('in_transit', 'In Transit'),
+        ('received', 'Received'),
+        ('cancelled', 'Cancelled'),
+        ('failed', 'Failed'),
+    ]
+
+    transfer_number = models.CharField(max_length=50, unique=True, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='inventory_transfers')
+    quantity = models.PositiveIntegerField(help_text="Quantity of product being transferred.")
+    
+    source_location = models.ForeignKey(StorageLocation, on_delete=models.CASCADE, related_name='outgoing_transfers')
+    destination_location = models.ForeignKey(StorageLocation, on_delete=models.CASCADE, related_name='incoming_transfers')
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    requested_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='initiated_transfers')
+    approved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_transfers')
+    
+    transfer_date = models.DateTimeField(auto_now_add=True)
+    shipped_date = models.DateTimeField(null=True, blank=True)
+    received_date = models.DateTimeField(null=True, blank=True)
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-transfer_date']
+        verbose_name = "Inventory Transfer"
+        verbose_name_plural = "Inventory Transfers"
+
+    def __str__(self):
+        return f"TRF-{self.transfer_number} ({self.product.name}): {self.source_location.name} -> {self.destination_location.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.transfer_number:
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            self.transfer_number = f"TRF-{timestamp}"
+        super().save(*args, **kwargs)
+
+    # Methods to update inventory during transfer lifecycle
+    def mark_as_shipped(self, user=None):
+        if self.status == 'pending':
+            self.status = 'in_transit'
+            self.shipped_date = timezone.now()
+            # Reduce stock from source location (if tracking by product/location)
+            # This is simplified; real logic would involve specific InventoryItems
+            # Update source location occupancy
+            if self.source_location.current_occupancy >= self.quantity:
+                self.source_location.current_occupancy -= self.quantity
+                self.source_location.save()
+            else:
+                logger.warning(f"Attempted to ship {self.quantity} from {self.source_location.name} but only {self.source_location.current_occupancy} available.")
+            
+            self.save()
+            # Log this in InventoryHistory for relevant InventoryItems if granular
+            return True
+        return False
+    
+    def mark_as_received(self, user=None):
+        if self.status == 'in_transit':
+            self.status = 'received'
+            self.received_date = timezone.now()
+            # Increase stock at destination location
+            self.destination_location.current_occupancy += self.quantity
+            self.destination_location.save()
+            self.save()
+            # Log this in InventoryHistory for relevant InventoryItems
+            return True
+        return False
+
+class ProductPriceHistory(models.Model):
+    """Tracks historical price changes for a product."""
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='price_history')
+    old_price = models.DecimalField(max_digits=10, decimal_places=2)
+    new_price = models.DecimalField(max_digits=10, decimal_places=2)
+    change_date = models.DateTimeField(auto_now_add=True)
+    changed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    reason = models.TextField(blank=True, help_text="Reason for the price change (e.g., 'Automated AI adjustment', 'Manual adjustment', 'Promotion')")
+
+    class Meta:
+        ordering = ['-change_date']
+        verbose_name = "Product Price History"
+        verbose_name_plural = "Product Price History"
+
+    def __str__(self):
+        return f"Price change for {self.product.name}: {self.old_price} -> {self.new_price} on {self.change_date.strftime('%Y-%m-%d')}"
+
+class AIPredictionAccuracy(models.Model):
+    """Tracks the accuracy of AI predictions over time."""
+    PREDICTION_TYPE_CHOICES = [
+        ('stock_level', 'Stock Level Prediction'),
+        ('demand_forecast', 'Demand Forecast'),
+        ('quality_class', 'Quality Classification'),
+        ('expiry_date', 'Expiry Date Prediction'),
+        # Add other prediction types as needed
+    ]
+
+    model = models.ForeignKey(TrainedModel, on_delete=models.SET_NULL, null=True, blank=True, related_name='accuracy_records')
+    prediction_type = models.CharField(max_length=50, choices=PREDICTION_TYPE_CHOICES)
+    evaluation_date = models.DateTimeField(auto_now_add=True)
+    
+    metric_name = models.CharField(max_length=50, help_text="e.g., MAE, RMSE, Accuracy, F1-Score")
+    metric_value = models.FloatField()
+    
+    period_start = models.DateField(help_text="Start date of the prediction period.")
+    period_end = models.DateField(help_text="End date of the prediction period.")
+    
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, help_text="Specific product if evaluation is product-specific.")
+    # Could also add location if predictions are location-specific
+
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-evaluation_date']
+        verbose_name = "AI Prediction Accuracy"
+        verbose_name_plural = "AI Prediction Accuracy"
+
+    def __str__(self):
+        return f"{self.prediction_type} ({self.metric_name}: {self.metric_value:.4f}) for {self.model.name if self.model else 'N/A'}"
+
+class InventoryMovement(models.Model):
+    """Logs detailed movements of individual inventory items."""
+    MOVEMENT_TYPE_CHOICES = [
+        ('receive', 'Receive into Location'),
+        ('put_away', 'Put Away (to shelf/bin)'),
+        ('pick', 'Pick from Shelf/Bin'),
+        ('pack', 'Pack for Shipment'),
+        ('transfer_in', 'Transfer In (from another location)'),
+        ('transfer_out', 'Transfer Out (to another location)'),
+        ('adjust_in', 'Adjustment In'),
+        ('adjust_out', 'Adjustment Out'),
+        ('return', 'Customer Return'),
+        ('damage', 'Damage/Spoilage'),
+    ]
+
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name='movements')
+    movement_type = models.CharField(max_length=50, choices=MOVEMENT_TYPE_CHOICES)
+    
+    # Locations
+    from_location = models.ForeignKey(StorageLocation, on_delete=models.SET_NULL, null=True, blank=True, related_name='outgoing_movements')
+    to_location = models.ForeignKey(StorageLocation, on_delete=models.SET_NULL, null=True, blank=True, related_name='incoming_movements')
+    
+    # Granular locations (within the StorageLocation)
+    from_shelf = models.CharField(max_length=50, blank=True)
+    from_bin = models.CharField(max_length=50, blank=True)
+    from_pallet = models.CharField(max_length=100, blank=True)
+
+    to_shelf = models.CharField(max_length=50, blank=True)
+    to_bin = models.CharField(max_length=50, blank=True)
+    to_pallet = models.CharField(max_length=100, blank=True)
+
+    quantity_moved = models.PositiveIntegerField(default=1) # How many units of this item were moved
+    
+    moved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='inventory_movements')
+    movement_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-movement_date']
+        verbose_name = "Inventory Movement Log"
+        verbose_name_plural = "Inventory Movement Logs"
+
+    def __str__(self):
+        return f"{self.item.name} ({self.quantity_moved}x) moved {self.movement_type} by {self.moved_by.username if self.moved_by else 'System'}"
+
+class Coupon(models.Model):
+    """Represents a discount coupon."""
+    DISCOUNT_TYPE_CHOICES = [
+        ('percentage', 'Percentage Discount'),
+        ('fixed_amount', 'Fixed Amount Discount'),
+        ('free_shipping', 'Free Shipping'),
+    ]
+
+    code = models.CharField(max_length=50, unique=True, help_text="Unique code for the coupon.")
+    description = models.TextField(blank=True, help_text="Description of the coupon (e.g., '10% off all fruits').")
+    
+    discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES)
+    value = models.DecimalField(max_digits=10, decimal_places=2, help_text="Value of the discount (e.g., 10 for 10%, 5.00 for $5 off).")
+    
+    is_active = models.BooleanField(default=True)
+    valid_from = models.DateTimeField(default=timezone.now)
+    valid_to = models.DateTimeField(null=True, blank=True)
+    
+    usage_limit = models.PositiveIntegerField(null=True, blank=True, help_text="Maximum number of times this coupon can be used overall.")
+    used_count = models.PositiveIntegerField(default=0)
+    
+    # Optional rules
+    min_purchase_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Minimum purchase amount required to use this coupon.")
+    
+    # Apply to specific products or categories (optional)
+    applicable_products = models.ManyToManyField(Product, blank=True, related_name='coupons')
+    applicable_categories = models.ManyToManyField(ProductCategory, blank=True, related_name='coupons')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Coupon"
+        verbose_name_plural = "Coupons"
+
+    def __str__(self):
+        return self.code
+
+    def is_valid(self, cart_total=None, user_usage_count=0):
+        """Checks if the coupon is currently valid."""
+        now = timezone.now()
+        if not self.is_active or (self.valid_to and now > self.valid_to) or now < self.valid_from:
+            return False, "Coupon is not active or expired."
+        
+        if self.usage_limit and self.used_count >= self.usage_limit:
+            return False, "Coupon has reached its maximum usage limit."
+        
+        # User-specific usage limit could be tracked in a separate model if needed
+        # if self.per_user_usage_limit and user_usage_count >= self.per_user_usage_limit:
+        #     return False, "You have already used this coupon the maximum number of times."
+
+        if self.min_purchase_amount and cart_total is not None and cart_total < self.min_purchase_amount:
+            return False, f"Minimum purchase amount of {self.min_purchase_amount} is required."
+            
+        return True, "Coupon is valid."
+
+# ==================== PRODUCT AI INSIGHTS MODEL ====================
+class ProductAIInsights(models.Model):
+    """Stores AI-derived predictions and insights for a product."""
+
+    QUALITY_CLASSES = [
+        ('Excellent', 'Excellent'),
+        ('Good', 'Good'),
+        ('Fair', 'Fair'),
+        ('Poor', 'Poor'),
+        ('Critical', 'Critical'), # General term for Rotten/Unsellable
+    ]
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='ai_insights_for_product', null=True, blank=True, help_text="The general product definition (optional if inventory_item is set).")
+    inventory_item = models.OneToOneField('InventoryItem', on_delete=models.CASCADE, related_name='ai_insights', null=True, blank=True, help_text="The specific inventory item instance (if insight is item-specific).")
+    storage_location = models.ForeignKey('StorageLocation', on_delete=models.SET_NULL, related_name='ai_insights_in_location', null=True, blank=True, help_text="The storage location related to this insight.")
+    
+    # Stock Predictions
+    predicted_stock_level = models.IntegerField(default=0, help_text="AI's predicted stock level in the near future.")
+    predicted_out_of_stock_date = models.DateField(null=True, blank=True, help_text="AI's predicted date when product might run out.")
+    
+    # Expiry/Quality Predictions (general for any perishable, not just fruit)
+    predicted_expiry_date = models.DateField(null=True, blank=True, help_text="AI's predicted expiry date for the product.")
+    predicted_quality_class = models.CharField(max_length=20, choices=QUALITY_CLASSES, blank=True, null=True, help_text="AI's predicted quality class.")
+    
+    # Demand Forecasting
+    demand_forecast_next_7_days = models.IntegerField(default=0, help_text="AI's forecasted demand for the next 7 days.")
+    demand_forecast_next_30_days = models.IntegerField(default=0, help_text="AI's forecasted demand for the next 30 days.")
+
+    # General AI Analysis Metrics
+    prediction_confidence = models.DecimalField(max_digits=5, decimal_places=2, default=0.0, help_text="Confidence score of the latest prediction.")
+    
+    # Audit Fields
+    last_analyzed = models.DateTimeField(auto_now=True, help_text="Timestamp of the last AI analysis.")
+    analysis_model_used = models.ForeignKey('TrainedModel', on_delete=models.SET_NULL, null=True, blank=True, help_text="The AI model used for the last analysis.")
+
+    class Meta:
+        verbose_name = "Product AI Insight"
+        verbose_name_plural = "Product AI Insights"
+        indexes = [
+            models.Index(fields=['product']),
+            models.Index(fields=['inventory_item']),
+            models.Index(fields=['storage_location']),
+            models.Index(fields=['predicted_out_of_stock_date']),
+            models.Index(fields=['predicted_expiry_date']),
+            models.Index(fields=['predicted_quality_class']),
+        ]
+        # An inventory item can only have one insight.
+        # A product at a specific storage location can also have a unique insight.
+        unique_together = (('inventory_item',), ('product', 'storage_location')) 
+        
+    def __str__(self):
+        if self.inventory_item:
+            return f"AI Insights for Inventory Item: {self.inventory_item.name} at {self.inventory_item.location.name}"
+        elif self.product and self.storage_location:
+            return f"AI Insights for Product: {self.product.name} at {self.storage_location.name}"
+        elif self.product:
+            return f"AI Insights for Product: {self.product.name}"
+        return f"AI Insights ({self.pk})"

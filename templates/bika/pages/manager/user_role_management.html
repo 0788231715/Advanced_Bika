@@ -1,0 +1,86 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}User Role Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-5">
+    <div class="row">
+        {% include 'bika/partials/user_sidebar.html' %} {# Assuming this sidebar exists and has manager links #}
+
+        <div class="col-md-9">
+            <h2 class="mb-4">User Role Management</h2>
+
+            {# Form to Assign/Edit Role #}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">{% if user_to_edit %}Edit Role for {{ user_to_edit.username }}{% else %}Assign New Role{% endif %}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <button type="submit" class="btn btn-primary mt-3">{% if user_to_edit %}Update Role{% else %}Assign Role{% endif %}</button>
+                        {% if user_to_edit %}
+                            <a href="{% url 'bika:manager_user_role_management' %}" class="btn btn-secondary mt-3 ms-2">Cancel Edit</a>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+
+            {# List of Users and Their Roles #}
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">All Users and Roles</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Current Role</th>
+                                    <th>Permissions</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user_obj in users_with_roles %}
+                                <tr>
+                                    <td>{{ user_obj.username }}</td>
+                                    <td>{{ user_obj.email }}</td>
+                                    <td>
+                                        {% if user_obj.user_role %}
+                                            <span class="badge bg-info">{{ user_obj.user_role.get_role_display }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Default ({{ user_obj.get_user_type_display }})</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user_obj.user_role and user_obj.user_role.permissions %}
+                                            <small class="text-muted">{{ user_obj.user_role.permissions|safe }}</small>
+                                        {% else %}
+                                            <small class="text-muted">None</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'bika:manager_user_role_management_edit' user_obj.id %}" class="btn btn-sm btn-outline-primary">Edit Role</a>
+                                        {# Optionally, add a delete role button #}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center">No users found with assigned roles.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}Inventory Item Details - {{ item.name }}{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for client navigation #}
+        </div>
+        <div class="col-md-9">
+            <h2 class="mb-4">Inventory Item Details: {{ item.name }} ({{ item.sku }})</h2>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Item Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Name:</strong> {{ item.name }}</p>
+                            <p><strong>SKU:</strong> {{ item.sku }}</p>
+                            <p><strong>Description:</strong> {{ item.description|default:"N/A" }}</p>
+                            <p><strong>Category:</strong> {{ item.category.name|default:"N/A" }}</p>
+                            <p><strong>Product Reference:</strong> {% if item.product %}<a href="{{ item.product.get_absolute_url }}">{{ item.product.name }}</a>{% else %}N/A{% endif %}</p>
+                            <p><strong>Quantity:</strong> {{ item.quantity }}</p>
+                            <p><strong>Unit Price:</strong> ${{ item.unit_price|floatformat:2 }}</p>
+                            <p><strong>Total Value:</strong> ${{ item.total_value|floatformat:2 }}</p>
+                            <p><strong>Item Type:</strong> {{ item.get_item_type_display }}</p>
+                            <p><strong>Status:</strong> <span class="badge bg-{% if item.status == 'active' %}success{% elif item.status == 'reserved' %}info{% elif item.status == 'expired' or item.status == 'damaged' %}danger{% else %}secondary{% endif %}">{{ item.get_status_display }}</span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Location:</strong> {{ item.location.name|default:"N/A" }}</p>
+                            <p><strong>Storage Reference:</strong> {{ item.storage_reference|default:"N/A" }}</p>
+                            <p><strong>Batch Number:</strong> {{ item.batch_number.batch_number|default:"N/A" }}</p>
+                            <p><strong>Expiry Date:</strong> {% if item.expiry_date %}{{ item.expiry_date }} {% if item.is_near_expiry %}<span class="badge bg-warning">Expiring Soon</span>{% elif item.days_until_expiry < 0 %}<span class="badge bg-danger">Expired</span>{% endif %}{% else %}N/A{% endif %}</p>
+                            <p><strong>Manufactured Date:</strong> {{ item.manufactured_date|default:"N/A" }}</p>
+                            <p><strong>Quality Rating:</strong> <span class="badge bg-info">{{ item.get_quality_rating_display }}</span></p>
+                            <p><strong>Condition Notes:</strong> {{ item.condition_notes|default:"None" }}</p>
+                            <p><strong>Weight:</strong> {% if item.weight_kg %}{{ item.weight_kg }} kg{% else %}N/A{% endif %}</p>
+                            <p><strong>Dimensions:</strong> {{ item.dimensions|default:"N/A" }}</p>
+                            <p><strong>Added By:</strong> {{ item.added_by.username|default:"System" }} on {{ item.created_at|date:"M d, Y" }}</p>
+                            <p><strong>Last Checked:</strong> {% if item.last_checked %}{{ item.last_checked|date:"M d, Y H:i" }}{% else %}N/A{% endif %}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Inventory History Section #}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Inventory History</h5>
+                </div>
+                <div class="card-body">
+                    {% if item.history.all %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Action</th>
+                                        <th>Quantity Change</th>
+                                        <th>Status Change</th>
+                                        <th>Location Change</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for history_entry in item.history.all %}
+                                    <tr>
+                                        <td>{{ history_entry.timestamp|date:"M d, Y H:i" }}</td>
+                                        <td><span class="badge bg-info">{{ history_entry.get_action_display }}</span></td>
+                                        <td>
+                                            {% if history_entry.previous_quantity is not None and history_entry.new_quantity is not None %}
+                                                {{ history_entry.previous_quantity }} &rarr; {{ history_entry.new_quantity }}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if history_entry.previous_status and history_entry.new_status %}
+                                                {{ history_entry.previous_status }} &rarr; {{ history_entry.new_status }}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if history_entry.previous_location and history_entry.new_location %}
+                                                {{ history_entry.previous_location.name }} &rarr; {{ history_entry.new_location.name }}
+                                            {% elif history_entry.new_location %}
+                                                To {{ history_entry.new_location.name }}
+                                            {% elif history_entry.previous_location %}
+                                                From {{ history_entry.previous_location.name }}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ history_entry.notes|default:"-" }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No history available for this item.</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="text-end">
+                <a href="{% url 'bika:client_inventory' %}" class="btn btn-secondary">Back to My Inventory</a>
+                <a href="{% url 'bika:create_client_request' %}?item={{ item.id }}" class="btn btn-primary">Request Action for Item</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

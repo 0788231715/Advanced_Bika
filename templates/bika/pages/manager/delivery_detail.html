@@ -1,0 +1,247 @@
+{% extends 'bika/pages/admin/base_admin.html' %} {# Corrected base template #}
+{% load static %}
+
+{% block title %}Delivery Details: {{ delivery.delivery_number }} | Bika Admin{% endblock %}
+
+{% block page_title %}Delivery Details: {{ delivery.delivery_number }}{% endblock %}
+{% block page_subtitle %}Manage and track delivery #{{ delivery.delivery_number }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{% url 'bika:manager_deliveries' %}">Deliveries</a></li>
+<li class="breadcrumb-item active">{{ delivery.delivery_number }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Delivery Overview Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-truck me-2"></i>Delivery Overview</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Client:</strong> {{ delivery.client.get_full_name|default:delivery.client.username }}</p>
+                        <p class="mb-1"><strong>Client Phone:</strong> {{ delivery.client_phone }}</p>
+                        <p class="mb-1"><strong>Client Email:</strong> {{ delivery.client_email }}</p>
+                        <p class="mb-1"><strong>Order Ref:</strong> 
+                            {% if delivery.order %}
+                            <a href="{% url 'bika:order_detail' delivery.order.id %}">#{{ delivery.order.order_number }}</a>
+                            {% else %}
+                            N/A
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <p class="mb-1"><strong>Delivery Status:</strong> 
+                            <span class="badge bg-{% if delivery.status == 'delivered' %}success{% elif delivery.status == 'cancelled' %}danger{% elif delivery.status == 'pending' %}warning{% else %}info{% endif %}">
+                                {{ delivery.get_status_display }}
+                            </span>
+                        </p>
+                        <p class="mb-1"><strong>Estimated Delivery:</strong> {{ delivery.estimated_delivery|date:"M d, Y H:i" }}</p>
+                        <p class="mb-1"><strong>Scheduled For:</strong> {{ delivery.scheduled_for|date:"M d, Y H:i"|default:"N/A" }}</p>
+                        <p class="mb-1"><strong>Assigned To:</strong> 
+                            {% if delivery.assigned_to %}{{ delivery.assigned_to.get_full_name|default:delivery.assigned_to.username }}{% else %}Unassigned{% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-map-marker-alt me-1"></i>Delivery Address</h6>
+                        <address>
+                            {{ delivery.delivery_address }}<br>
+                            {{ delivery.delivery_city }}, {% if delivery.delivery_state %}{{ delivery.delivery_state }}, {% endif %}{{ delivery.delivery_postal_code }}<br>
+                            {{ delivery.delivery_country }}
+                        </address>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-info-circle me-1"></i>Additional Info</h6>
+                        <p class="mb-1"><strong>Delivery Type:</strong> {{ delivery.get_delivery_type_display }}</p>
+                        <p class="mb-1"><strong>Special Instructions:</strong> {{ delivery.special_instructions|default:"None" }}</p>
+                        <p class="mb-1"><strong>Package Count:</strong> {{ delivery.package_count|default:"N/A" }}</p>
+                        <p class="mb-1"><strong>Total Weight:</strong> {{ delivery.total_weight|default:"N/A" }} kg</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delivery Items Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-boxes me-2"></i>Delivery Items</h5>
+            </div>
+            <div class="card-body">
+                {% if delivery_items %}
+                <div class="table-responsive">
+                    <table class="table admin-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Quantity</th>
+                                <th>Unit Price</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in delivery_items %}
+                            <tr>
+                                <td>
+                                    {% if item.item %}
+                                    <a href="{% url 'bika:client_item_detail' item.item.id %}">{{ item.item.name }}</a>
+                                    {% elif item.product %}
+                                    <a href="{% url 'bika:product_detail' item.product.slug %}">{{ item.product.name }}</a>
+                                    {% else %}
+                                    N/A
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.quantity }}</td>
+                                <td>TZS {{ item.unit_price|floatformat:2 }}</td>
+                                <td>TZS {{ item.total_price|floatformat:2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">No items associated with this delivery.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Delivery History Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-history me-2"></i>Delivery History</h5>
+            </div>
+            <div class="card-body">
+                {% if status_history %}
+                <ul class="list-group list-group-flush">
+                    {% for entry in status_history %}
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">{{ entry.get_to_status_display }}</div>
+                            <small class="text-muted">{{ entry.timestamp|date:"M d, Y H:i" }} by {{ entry.changed_by.get_full_name|default:entry.changed_by.username }}</small>
+                            {% if entry.notes %}<p class="mb-0 small">{{ entry.notes }}</p>{% endif %}
+                            {% if entry.location %}<p class="mb-0 small text-info"><i class="fas fa-map-marker-alt me-1"></i>Location: {{ entry.location }}</p>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">No status history available for this delivery.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Update Status Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-sync-alt me-2"></i>Update Status</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'bika:manager_delivery_detail' delivery.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_status">
+                    {% for field in status_form %}
+                    <div class="mb-3">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}
+                            <div class="form-text">{{ field.help_text }}</div>
+                        {% endif %}
+                        {% for error in field.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-admin w-100">Update Delivery Status</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Assign Driver Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-user-tie me-2"></i>Assign Driver</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'bika:manager_delivery_detail' delivery.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="assign_driver">
+                    <div class="mb-3">
+                        <label for="id_staff_id" class="form-label">Select Driver</label>
+                        <select name="staff_id" id="id_staff_id" class="form-select select2">
+                            <option value="">---------</option>
+                            {% for driver in available_drivers %}
+                                <option value="{{ driver.id }}" {% if delivery.assigned_to == driver %}selected{% endif %}>
+                                    {{ driver.get_full_name|default:driver.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% for error in assign_form.staff_id.errors %} {# assign_form is just a placeholder for now, actual form field handling needs to be done in view #}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="btn btn-admin-outline w-100">Assign Driver</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Proof of Delivery Card -->
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-file-signature me-2"></i>Proof of Delivery</h5>
+            </div>
+            <div class="card-body">
+                {% if delivery.proof_photo %}
+                    <p><strong>Photo:</strong> <a href="{{ delivery.proof_photo.url }}" target="_blank">View Photo</a></p>
+                {% endif %}
+                {% if delivery.recipient_signature_image %}
+                    <p><strong>Signature:</strong> <a href="{{ delivery.recipient_signature_image.url }}" target="_blank">View Signature</a></p>
+                {% endif %}
+                {% if delivery.recipient_name %}<p><strong>Received By:</strong> {{ delivery.recipient_name }}</p>{% endif %}
+                {% if delivery.delivery_notes %}<p><strong>Notes:</strong> {{ delivery.delivery_notes }}</p>{% endif %}
+
+                <hr>
+
+                <form method="post" action="{% url 'bika:manager_delivery_detail' delivery.id %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="proof_of_delivery">
+                    {% for field in proof_form %}
+                    <div class="mb-3">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% for error in field.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-admin w-100">Submit Proof</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Map Placeholder (Optional: Integrate a map here for real-time tracking if coordinates are available) -->
+<div class="admin-card mb-4">
+    <div class="card-header">
+        <h5><i class="fas fa-map-marked-alt me-2"></i>Delivery Map</h5>
+    </div>
+    <div class="card-body">
+        <div id="delivery-map" style="height: 400px; background-color: #f8f9fa; border-radius: 8px;">
+            <p class="text-center text-muted p-5">Map integration would go here (e.g., Leaflet.js or Google Maps)</p>
+            {% if delivery.delivery_latitude and delivery.delivery_longitude %}
+            <p class="text-center text-muted">Destination: {{ delivery.delivery_latitude }}, {{ delivery.delivery_longitude }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

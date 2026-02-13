@@ -1,0 +1,143 @@
+{% extends 'bika/base.html' %}
+{% load static %}
+
+{% block title %}My Inventory{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-3">
+            {% include 'bika/partials/user_sidebar.html' %} {# Assuming a sidebar for client navigation #}
+        </div>
+        <div class="col-md-9">
+            <h2 class="mb-4">My Inventory Items</h2>
+
+            {# Quick Stats for Client Inventory #}
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Items Held</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_inventory_items }}</div>
+                                </div>
+                                <div class="col-auto"><i class="fas fa-boxes fa-2x text-gray-300"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card border-left-danger shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Items Near Expiry</div>
+                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ near_expiry_items_count }}</div>
+                                </div>
+                                <div class="col-auto"><i class="fas fa-calendar-times fa-2x text-gray-300"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Inventory Table - Client View #}
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Your Stored Items</h6>
+                    <div>
+                        <a href="{% url 'bika:create_client_request' %}" class="btn btn-primary btn-sm me-2">Request Action</a>
+                        <a href="#" class="btn btn-outline-secondary btn-sm">Export List</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {# Filter/Search form goes here #}
+                    <form class="d-flex mb-3" method="get">
+                        <input type="text" name="q" class="form-control me-2" placeholder="Search by name, SKU..." value="{{ request.GET.q }}">
+                        <select name="status" class="form-select me-2">
+                            <option value="">All Statuses</option>
+                            {% for status_val, status_display in item_statuses %}
+                                <option value="{{ status_val }}" {% if request.GET.status == status_val %}selected{% endif %}>{{ status_display }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-primary">Filter</button>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped" id="dataTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>SKU</th>
+                                    <th>Quantity</th>
+                                    <th>Status</th>
+                                    <th>Location</th>
+                                    <th>Expiry Date</th>
+                                    <th>Quality</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in inventory_items %}
+                                <tr>
+                                    <td>{{ item.name }}</td>
+                                    <td>{{ item.sku }}</td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td><span class="badge bg-{% if item.status == 'active' %}success{% elif item.status == 'reserved' %}info{% elif item.status == 'expired' or item.status == 'damaged' %}danger{% else %}secondary{% endif %}">{{ item.get_status_display }}</span></td>
+                                    <td>{{ item.location.name|default:"N/A" }}</td>
+                                    <td>
+                                        {% if item.expiry_date %}
+                                            {{ item.expiry_date }}
+                                            {% if item.is_near_expiry %}
+                                                <span class="badge bg-warning ms-1" data-bs-toggle="tooltip" title="{{ item.days_until_expiry }} days left">Expiring Soon</span>
+                                            {% elif item.days_until_expiry == 0 %}
+                                                <span class="badge bg-danger ms-1" data-bs-toggle="tooltip" title="Expired Today">Expired</span>
+                                            {% elif item.days_until_expiry < 0 %}
+                                                <span class="badge bg-danger ms-1" data-bs-toggle="tooltip" title="Expired {{ item.days_until_expiry|abs }} days ago">Expired</span>
+                                            {% endif %}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="badge bg-info">{{ item.get_quality_rating_display }}</span></td>
+                                    <td>
+                                        <a href="{% url 'bika:client_item_detail' item.id %}" class="btn btn-info btn-sm">View Details</a>
+                                        {# Request action like withdrawal or inspection #}
+                                        <a href="{% url 'bika:create_client_request' %}?item={{ item.id }}" class="btn btn-secondary btn-sm">Request</a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="8" class="text-center">No inventory items found for you.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {# Pagination #}
+                    {% if inventory_items.has_other_pages %}
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-center">
+                                {% if inventory_items.has_previous %}
+                                    <li class="page-item"><a class="page-link" href="?page={{ inventory_items.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Previous</a></li>
+                                {% endif %}
+                                {% for i in inventory_items.paginator.page_range %}
+                                    {% if inventory_items.number == i %}
+                                        <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                                    {% else %}
+                                        <li class="page-item"><a class="page-link" href="?page={{ i }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">{{ i }}</a></li>
+                                {% endif %}
+                                {% endfor %}
+                                {% if inventory_items.has_next %}
+                                    <li class="page-item"><a class="page-link" href="?page={{ inventory_items.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Next</a></li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

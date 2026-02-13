@@ -1,0 +1,107 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ alert_type }} Notification - Bika</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #007bff;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 20px;
+            text-align: left;
+        }
+        .content h2 {
+            color: #007bff;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #007bff;
+            color: #ffffff;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #777777;
+            border-top: 1px solid #eeeeee;
+            margin-top: 20px;
+        }
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .alert-severity-critical { color: #dc3545; font-weight: bold; }
+        .alert-severity-high { color: #ffc107; font-weight: bold; }
+        .alert-severity-medium { color: #17a2b8; font-weight: bold; }
+        .alert-severity-low { color: #28a745; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Alert Notification from Bika</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{ user.first_name|default:"User" }},</p>
+            
+            <h2>{{ alert_title }}</h2>
+            <p>{{ alert_message }}</p>
+
+            <p>
+                <strong>Alert Type:</strong> {{ alert_type }}<br>
+                <strong>Severity:</strong> <span class="alert-severity-{{ alert_severity|lower }}">{{ alert_severity }}</span><br>
+                <strong>Timestamp:</strong> {{ timestamp|date:"F d, Y H:i" }}
+            </p>
+
+            {% if related_object_url %}
+            <p>For more details, please visit:</p>
+            <p><a href="{{ related_object_url }}" class="button">View Details</a></p>
+            {% endif %}
+
+            <p>If you have any questions, please contact our support team.</p>
+            <p>Sincerely,<br>The Bika Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; {% now "Y" %} Bika. All rights reserved.</p>
+            <p>
+                <a href="{{ site_url }}">Visit our website</a> | 
+                <a href="{{ privacy_policy_url }}">Privacy Policy</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

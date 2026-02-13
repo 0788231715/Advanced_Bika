@@ -1,0 +1,78 @@
+{% extends 'bika/pages/admin/base_admin.html' %}
+{% load static %}
+
+{% block title %}Transfer Inventory | Bika Admin{% endblock %}
+
+{% block page_title %}Transfer Inventory{% endblock %}
+{% block page_subtitle %}Move items between different storage locations{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{% url 'bika:storage_dashboard' %}">Storage Dashboard</a></li>
+<li class="breadcrumb-item active">Transfer</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="admin-card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-exchange-alt me-2"></i>Transfer Items</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'bika:storage_transfer' %}">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_sku" class="form-label">Item SKU</label>
+                        <input type="text" class="form-control" id="id_sku" name="sku" required placeholder="Enter item SKU or scan barcode">
+                        <div class="form-text">Scan or type the Stock Keeping Unit (SKU) of the item to transfer.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_from_location_id" class="form-label">From Location</label>
+                        <select class="form-select" id="id_from_location_id" name="from_location_id" required>
+                            <option value="">Select source location</option>
+                            {% for location in locations %}
+                                <option value="{{ location.id }}">{{ location.name }} - {{ location.address|truncatechars:50 }}</option>
+                            {% empty %}
+                                <option value="" disabled>No active locations available</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Select the current location of the item.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_to_location_id" class="form-label">To Location</label>
+                        <select class="form-select" id="id_to_location_id" name="to_location_id" required>
+                            <option value="">Select destination location</option>
+                            {% for location in locations %}
+                                <option value="{{ location.id }}">{{ location.name }} - {{ location.address|truncatechars:50 }}</option>
+                            {% empty %}
+                                <option value="" disabled>No active locations available</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Select the new location for the item.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="id_quantity" name="quantity" required min="1" value="1">
+                        <div class="form-text">Enter the quantity of items to transfer.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_notes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="id_notes" name="notes" rows="3" placeholder="Add any relevant notes about this transfer"></textarea>
+                        <div class="form-text">e.g., reason for transfer, new batch assignment.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-admin btn-lg w-100">
+                        <i class="fas fa-arrows-alt-h me-2"></i>Confirm Transfer
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
